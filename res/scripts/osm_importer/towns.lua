@@ -43,10 +43,25 @@ function t.createTownLabels(towns)
 end
 
 function t.setAllTownsDevActive(active)
-	-- local towns = game.interface.getTowns()  -- not working for newly created towns??
-	local towns = game.interface.getEntities({radius=math.huge},{type="TOWN"})
+	-- This function may not be available in all contexts
+	if not game.interface.setTownDevelopmentActive then
+		print("[OSM Importer] Warning: setTownDevelopmentActive not available, skipping")
+		return
+	end
+	
+	local ok, towns = pcall(function()
+		return game.interface.getEntities({radius=math.huge},{type="TOWN"})
+	end)
+	
+	if not ok or not towns then
+		print("[OSM Importer] Warning: Could not get towns, skipping town development toggle")
+		return
+	end
+	
 	for _,id in pairs(towns) do
-		game.interface.setTownDevelopmentActive(id, active)
+		pcall(function()
+			game.interface.setTownDevelopmentActive(id, active)
+		end)
 	end
 end
 

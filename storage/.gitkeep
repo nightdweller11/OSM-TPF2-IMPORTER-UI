@@ -1,0 +1,3 @@
+# Storage directory for OSM files and converted outputs
+# This directory should be writable by the application
+

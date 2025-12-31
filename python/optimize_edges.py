@@ -7,15 +7,33 @@ from cubic_spline import MyCubicSpline as CubicSpline, approx_length_arc
 from graph_tools import create_graph, create_sub_graph, create_bridge_graph, create_ground_graph, \
     get_paths_to_simplify, is_node_removable, remove_node
 
+# Try to import progress module for reporting
+try:
+    import progress
+    _has_progress = True
+except ImportError:
+    _has_progress = False
+
+def _report_step(message, percent=None):
+    """Report optimization step progress."""
+    if _has_progress:
+        progress.step(message, percent=percent)
+
 
 def optimize(data):
+    # Total edge count for progress estimation
+    total_edges = len(data.get("edges", {}))
+    _report_step(f"Starting optimization of {total_edges:,} edges...", percent=50)
+    
     # 1. Avoid very long edges (can cut through terrain, and affects curve splines negatively)
     print("=" * 16 + " Split long Edges " + "=" * 16)
+    _report_step("Splitting long edges...", percent=51)
     split_long_edges(data["nodes"], data["edges"], 80, etype="street")
     split_long_edges(data["nodes"], data["edges"], 150, etype="track")
 
     # 2. Create graph and obtain paths
     print("=" * 16 + " Create Graphs " + "=" * 16)
+    _report_step("Creating graph structures...", percent=53)
     g = create_graph(data["nodes"], data["edges"])
     gs = create_sub_graph(g, "STREET")
     print("Street: ", gs)
@@ -25,6 +43,8 @@ def optimize(data):
     print("Bridge: ", gb)
     gg = create_ground_graph(g)  # complement of bridge graph
     print("Ground: ", gg)
+    
+    _report_step("Extracting paths to simplify...", percent=55)
     paths_track = list(get_paths_to_simplify(gt, maxangle=45, continue_through_crossings=True))
     paths_street = list(get_paths_to_simplify(gs, maxangle=30, continue_through_crossings=True))
     paths_bridge = list(get_paths_to_simplify(gb))
@@ -39,33 +59,50 @@ def optimize(data):
     print(f"Street Paths: {len(paths_street)} , Av len: {np.array([len(p) for p in paths_street]).mean():.1f}")
     print(f"Bridge Paths: {len(paths_bridge)} , Av len: {np.array([len(p) for p in paths_bridge]).mean():.1f}")
     print(f"Ground Paths: {len(paths_ground)} , Av len: {np.array([len(p) for p in paths_ground]).mean():.1f}")
+    
+    _report_step(f"Found {len(paths_track):,} track paths, {len(paths_street):,} street paths", percent=56)
 
     # 3. Remove Nodes to improve curve geometry and reduce number of segments
     print("=" * 16 + " Remove Nodes with high curvature " + "=" * 16)
+    _report_step("Removing high-curvature nodes from tracks...", percent=57)
     remove_nodes_curvature(paths_track, g, gt, gs, data["nodes"], data["edges"], maxlength=175, maxangle=30)
+    _report_step("Removing high-curvature nodes from streets...", percent=59)
     remove_nodes_curvature(paths_street, g, gt, gs, data["nodes"], data["edges"], maxlength=100, maxangle=25)
+    
     print("=" * 16 + " Remove unnecessary short Edges " + "=" * 16)
+    _report_step("Removing unnecessary short edges from tracks...", percent=61)
     remove_short_unnecessary_edges(paths_track, g, gt, gs, data["nodes"], data["edges"], maxlength=100, maxangle=35)
+    _report_step("Removing unnecessary short edges from streets...", percent=63)
     remove_short_unnecessary_edges(paths_street, g, gt, gs, data["nodes"], data["edges"], maxlength=60, maxangle=30)
+    
     print("=" * 16 + " Remove short Edges " + "=" * 16)
+    _report_step("Removing very short edges...", percent=65)
     remove_short_edges(paths_track, g, gt, gs, data["nodes"], data["edges"], 10, maxangle=15)
     remove_short_edges(paths_street, g, gt, gs, data["nodes"], data["edges"], 3, maxangle=15)
 
     # 4. Calculate tangents for curved edge paths
     print("=" * 16 + " Calculate Tangents " + "=" * 16)
+    _report_step("Calculating curve tangents for tracks...", percent=66)
     add_curve_tangents(paths_track, g, method="natural", maxangle=999, warnangle=35)
+    _report_step("Calculating curve tangents for streets...", percent=68)
     add_curve_tangents(paths_street, g, method="natural", maxangle=999, warnangle=50)
     add_path_info_to_nodes(paths_track, data["nodes"], "track")
     add_path_info_to_nodes(paths_street, data["nodes"], "street")
+    
     print("=" * 16 + " Align Tangents of Switches " + "=" * 16)
+    _report_step("Aligning switch tangents...", percent=69)
     align_switches_tangents(g, gt, data["nodes"], maxangle=40)
 
     # 5. Add signal information to edges
     print("=" * 16 + " Adjust Signals " + "=" * 16)
+    _report_step("Adjusting signal positions...", percent=70)
     adjust_signals(data["nodes"], g)
 
     adjust_other_paths(paths_bridge, data["nodes"])
     adjust_other_paths(paths_ground, data["nodes"])
+    
+    final_edges = len(data.get("edges", {}))
+    _report_step(f"Optimization complete: {total_edges:,} -> {final_edges:,} edges", percent=70)
 
     # remove unnecessary data
     for nid, node in data["nodes"].items():

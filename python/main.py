@@ -2,6 +2,7 @@ import os, sys
 import luadata
 from datetime import datetime
 
+import progress
 import read_osm
 import convert_data
 import optimize_edges
@@ -10,15 +11,26 @@ from lua_remove_nil import lua_remove_nil
 
 #################################################
 
-# redirect log to file; comment out to write in console
-sys.stdout = open('log.txt', 'w', encoding='utf-8')
-sys.stderr = sys.stdout
+# Initialize progress tracking
+progress.init()
 
-print("#" * 16 + "  OSM-TPF2 CONVERTER  " + "#" * 16)
-print("Startup:", datetime.now())
+# Open log file for detailed output (keep stdout for log file)
+log_file = open('log.txt', 'w', encoding='utf-8')
+original_stdout = sys.stdout
+sys.stdout = log_file
+
+def log(message):
+    """Write to both log file and emit as progress info."""
+    print(message)
+    sys.stdout.flush()
+
+log("#" * 16 + "  OSM-TPF2 CONVERTER  " + "#" * 16)
+log(f"Startup: {datetime.now()}")
 start = datetime.now()
 
-# assert len(sys.argv) == 5, "Expect 4 Arguments when using the exe"
+# Note: Download is handled by Node.js (0-15%), we start at 15%
+progress.phase("init", "Initializing Python converter...", 15)
+progress.step("Loading conversion modules...")
 
 #################################################
 
@@ -39,43 +51,201 @@ bounds = {  # set bounds manually
     "minlat": 49.9829, "minlon": 8.48095,
     "maxlat": 50.2037, "maxlon": 8.8260,
 }
-# bounds = read_osm.read_bounds(INFILE)  # use bounds of osm file
 if len(sys.argv) > 4:
-    coords = map(float, sys.argv[4].split(','))
+    coords = list(map(float, sys.argv[4].split(',')))
     bounds = dict((key, c) for key, c in zip(["minlat", "minlon", "maxlat", "maxlon"], coords))
-print("Map Bounds defined:", bounds)
+
+log(f"Input file: {INFILE}")
+log(f"Output file: {OUTFILE}")
+log(f"Map size: {bounds_length}")
+log(f"Map Bounds: {bounds}")
+
+# Get file size for estimation
+try:
+    file_size_mb = os.path.getsize(INFILE) / (1024 * 1024)
+    progress.info(f"Input file size: {file_size_mb:.1f} MB")
+    # Rough estimation: ~1 minute per 100MB of OSM data
+    estimated_total = max(60, file_size_mb * 0.6)  # seconds
+    progress.estimate(estimated_total)
+except:
+    file_size_mb = 0
+    estimated_total = 300  # default 5 minutes
+
+progress.step(f"Input: {os.path.basename(INFILE)} ({file_size_mb:.1f} MB)")
+progress.step(f"Output: {os.path.basename(OUTFILE)}")
+progress.step(f"Map size: {bounds_length[0]}x{bounds_length[1]}")
 
 #################################################
 
 # 1. Parse osm xml data and put in dicts
-print("=" * 16 + " Parse OSM XML data " + "=" * 16)
-nodes, ways, relations = read_osm.read(INFILE)
+log("=" * 16 + " Parse OSM XML data " + "=" * 16)
+progress.phase("parsing", "Parsing OSM XML data...", 15, {
+    "file": os.path.basename(INFILE),
+    "size_mb": round(file_size_mb, 1)
+})
 
-# 2. Convert osm data to relevant data for TPF2
-print("=" * 16 + " Convert/Transform data " + "=" * 16)
-data = convert_data.convert(nodes, ways, relations, bounds, bounds_length)
+# Custom read function with progress
+def read_with_progress(filename):
+    """Read OSM file with progress reporting."""
+    from osmread import parse_file, Node, Way, Relation
+    import xml.etree.ElementTree as Xmlt
+    
+    progress.step("Reading XML bounds...")
+    bounds = read_osm.read_bounds(filename)
+    log(f"Bounds of osm file: {bounds}")
+    
+    progress.step("Parsing OSM entities...")
+    
+    nodes = {}
+    ways = {}
+    relations = {}
+    entity_count = 0
+    last_report = 0
+    
+    # Estimate total entities based on file size (roughly 1 entity per 100 bytes)
+    estimated_entities = max(100000, int(file_size_mb * 1024 * 1024 / 100))
+    
+    for entity in parse_file(filename):
+        entity_count += 1
+        
+        # Report every 50,000 entities for smoother progress
+        if entity_count - last_report >= 50000:
+            # Progress from 15% to 35% during parsing
+            parse_progress = min(35, 15 + (entity_count / estimated_entities) * 20)
+            progress.step(f"Parsed {entity_count:,} entities...", 
+                         percent=parse_progress)
+            last_report = entity_count
+        
+        if isinstance(entity, Node):
+            nodes[entity.id] = entity
+            if not read_osm.isinbounds(bounds, entity.lat, entity.lon):
+                entity.tags["outofbounds"] = True
+        elif isinstance(entity, Way):
+            ways[entity.id] = entity
+        elif isinstance(entity, Relation):
+            relations[entity.id] = entity
+    
+    log(f"Loaded {len(nodes)} Nodes / {len(ways)} Ways / {len(relations)} Relations")
+    progress.stats(nodes=len(nodes), ways=len(ways), relations=len(relations))
+    progress.step(f"Loaded {len(nodes):,} nodes, {len(ways):,} ways, {len(relations):,} relations", percent=35)
+    
+    return nodes, ways, relations
 
-# 3. Do optimizations for edges (shorting, curving)
-print("=" * 16 + " Optimize Edges/geometry " + "=" * 16)
-optimize_edges.optimize(data)
-
-# 4. Sort edges by (street)type, so more important streets get built first
-print("=" * 16 + " Sort Edges " + "=" * 16)
-data["edges"] = sort_edges.sort(data["edges"])
-
-# 5. remove nil values, makes file shorter
-data = lua_remove_nil(data)
+nodes, ways, relations = read_with_progress(INFILE)
 
 #################################################
 
-print("=" * 16 + " Write Lua file " + "=" * 16)
+# 2. Convert osm data to relevant data for TPF2
+log("=" * 16 + " Convert/Transform data " + "=" * 16)
+progress.phase("converting", "Converting OSM data to TPF2 format...", 35, {
+    "nodes": len(nodes),
+    "ways": len(ways),
+    "relations": len(relations)
+})
+
+# Monkey-patch convert_data to report progress
+original_convert = convert_data.convert
+
+def convert_with_progress(nodes, ways, relations, bounds, bounds_length):
+    progress.step("Processing ways and extracting edges...", percent=38)
+    result = original_convert(nodes, ways, relations, bounds, bounds_length)
+    
+    edge_count = len(result.get("edges", []))
+    town_count = len(result.get("towns", []))
+    area_count = sum(len(a) for a in result.get("areas", {}).values())
+    object_count = len(result.get("objects", []))
+    
+    progress.stats(
+        nodes=len(result.get("nodes", {})),
+        edges=edge_count,
+        towns=town_count,
+        areas=area_count,
+        objects=object_count
+    )
+    progress.step(f"Extracted {edge_count:,} edges, {town_count:,} towns, {area_count:,} areas", percent=48)
+    
+    return result
+
+data = convert_with_progress(nodes, ways, relations, bounds, bounds_length)
+
+#################################################
+
+# 3. Do optimizations for edges (shorting, curving)
+log("=" * 16 + " Optimize Edges/geometry " + "=" * 16)
+progress.phase("optimizing", "Optimizing edge geometry...", 50, {
+    "edges": len(data.get("edges", []))
+})
+
+progress.step("Shortening and curving edges...")
+optimize_edges.optimize(data)
+
+edge_count = len(data.get("edges", []))
+progress.step(f"Optimized {edge_count:,} edges", percent=70)
+
+#################################################
+
+# 4. Sort edges by (street)type, so more important streets get built first
+log("=" * 16 + " Sort Edges " + "=" * 16)
+progress.phase("sorting", "Sorting edges by priority...", 70)
+
+progress.step("Sorting edges by street type...")
+data["edges"] = sort_edges.sort(data["edges"])
+progress.step(f"Sorted {len(data['edges']):,} edges by type", percent=80)
+
+#################################################
+
+# 5. remove nil values, makes file shorter
+progress.phase("cleanup", "Cleaning up data...", 80)
+progress.step("Removing nil values...")
+data = lua_remove_nil(data)
+progress.step("Data cleanup complete", percent=85)
+
+#################################################
+
+log("=" * 16 + " Write Lua file " + "=" * 16)
+progress.phase("writing", "Writing Lua output file...", 85, {
+    "output": os.path.basename(OUTFILE)
+})
+
+progress.step(f"Writing to {os.path.basename(OUTFILE)}...")
+progress.info("This may take a while for large datasets...")
 luadata.write(OUTFILE, data, indent="\t")
-print(f"Successfully converted OSM data to: '{OUTFILE}'")
-print("\n  ".join([f"Data contains:",
-                   f"Towns: {len(data['towns'])}",
-                   f"Nodes: {len(data['nodes'])}",
-                   f"Edges: {len(data['edges'])}",
-                   f"Areas: {sum(len(area) for area in data['areas'].values())}",
-                   f"Objects: {len(data['objects'])}"
-                   ]))
-print(f"Execution time: {datetime.now() - start} s")
+
+# Get output file size
+try:
+    output_size_mb = os.path.getsize(OUTFILE) / (1024 * 1024)
+    progress.step(f"Written {output_size_mb:.1f} MB", percent=95)
+except:
+    output_size_mb = 0
+
+#################################################
+
+# Calculate final stats
+final_stats = {
+    "towns": len(data['towns']),
+    "nodes": len(data['nodes']),
+    "edges": len(data['edges']),
+    "areas": sum(len(area) for area in data['areas'].values()),
+    "objects": len(data['objects']),
+    "output_size_mb": round(output_size_mb, 1)
+}
+
+log(f"Successfully converted OSM data to: '{OUTFILE}'")
+log("\n  ".join([f"Data contains:",
+                 f"Towns: {final_stats['towns']}",
+                 f"Nodes: {final_stats['nodes']}",
+                 f"Edges: {final_stats['edges']}",
+                 f"Areas: {final_stats['areas']}",
+                 f"Objects: {final_stats['objects']}"
+                 ]))
+
+execution_time = datetime.now() - start
+log(f"Execution time: {execution_time}")
+
+# Report completion
+progress.phase("complete", "Conversion complete!", 100)
+progress.complete(final_stats)
+progress.info(f"Total time: {execution_time}")
+
+# Close log file
+log_file.close()
