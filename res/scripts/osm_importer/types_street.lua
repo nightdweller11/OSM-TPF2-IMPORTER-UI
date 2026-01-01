@@ -2,10 +2,16 @@ local tools = require"osm_importer.tools"
 
 local st = {}
 
-st.fallback_type = "01_fusswege/01_fussweg_roter_schotter.lua" -- < choose this to better detect unknown types
--- st.fallback_type = "01_fusswege/01_fussweg_asphalt.lua" -- < choose this for visual appearance
+-- VANILLA fallback - always available
+-- Use a basic vanilla street type as fallback
+-- Note: vanilla types use "standard/" prefix or just the filename
+st.fallback_type = "standard/town_small_new.lua"  -- Vanilla small town road with sidewalks
 
-st.small_type = st.fallback_type
+-- For small paths/footways - also vanilla
+st.small_type = "standard/town_verysmall_new.lua"
+
+-- Mod fallbacks if you have them installed:
+-- st.fallback_type = "01_fusswege/01_fussweg_roter_schotter.lua"
 -- st.small_type = "lollo_1m_path.lua"
 
 

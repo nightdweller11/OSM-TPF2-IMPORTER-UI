@@ -20,6 +20,8 @@ export interface ConversionConfig {
   // Optional filtering - these determine what gets included
   railTypes?: string[];
   highwayTypes?: string[];
+  // Heightmap generation
+  heightmapFile?: string;  // If set, generates a heightmap PNG
 }
 
 export interface ProgressEvent {
@@ -49,6 +51,7 @@ export interface ConversionResult {
   success: boolean;
   outputFile?: string;
   logFile?: string;
+  heightmapFile?: string;  // Path to generated heightmap PNG
   stats?: {
     nodes: number;
     edges: number;
@@ -375,6 +378,14 @@ export class PythonRunner extends EventEmitter {
       `${config.mapSize.width},${config.mapSize.height}`,
       `${config.bounds.minLat},${config.bounds.minLon},${config.bounds.maxLat},${config.bounds.maxLon}`,
     ];
+    
+    // Add heightmap file path if requested
+    if (config.heightmapFile) {
+      const absoluteHeightmapFile = path.isAbsolute(config.heightmapFile)
+        ? config.heightmapFile
+        : path.resolve(process.cwd(), config.heightmapFile);
+      args.push(absoluteHeightmapFile);
+    }
     
     // Log file path (Python script writes logs here)
     const pythonLogFile = path.join(this.scriptDir, "log.txt");

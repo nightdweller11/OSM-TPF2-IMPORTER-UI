@@ -22,7 +22,8 @@ _G.OSM_UI = _G.OSM_UI or {
         build_signals = true,
         build_forests = true,
         build_surfaces = true,
-        clear_existing = true,  -- Clear map before import
+        build_towns = false,  -- OFF by default - causes crashes near water
+        clear_existing = true,
     }
 }
 
@@ -67,9 +68,9 @@ local function resourceExists(repName, resourceId)
     return ok and result
 end
 
--- Scan osmdata for all unique resource types used
+-- Scan osmdata for summary info
 local function scanOsmDataResources()
-    addLog("Scanning data resources...")
+    addLog("Scanning data structure...")
     
     local ok, osmdata = pcall(function()
         return require "osm_importer.osmdata"
@@ -79,107 +80,112 @@ local function scanOsmDataResources()
         return nil
     end
     
-    local resources = {
-        trackTypes = {},
-        streetTypes = {},
-        bridgeTypes = {},
-        models = {},
+    local summary = {
+        tracksCount = 0,
+        streetsCount = 0,
+        bridgesCount = 0,
+        tunnelsCount = 0,
+        objectsCount = 0,
+        forestsCount = 0,
+        groundsCount = 0,
     }
     
-    -- Scan edges for track/street types
+    -- Scan edges
     if osmdata.edges then
         for i, edge in ipairs(osmdata.edges) do
-            if edge.type then
-                if edge.trackType or edge.isTrack then
-                    resources.trackTypes[edge.type] = (resources.trackTypes[edge.type] or 0) + 1
-                else
-                    resources.streetTypes[edge.type] = (resources.streetTypes[edge.type] or 0) + 1
-                end
+            if edge.track then
+                summary.tracksCount = summary.tracksCount + 1
+            elseif edge.street then
+                summary.streetsCount = summary.streetsCount + 1
             end
-            if edge.bridgeType then
-                resources.bridgeTypes[edge.bridgeType] = (resources.bridgeTypes[edge.bridgeType] or 0) + 1
+            if edge.bridge then
+                summary.bridgesCount = summary.bridgesCount + 1
+            end
+            if edge.tunnel then
+                summary.tunnelsCount = summary.tunnelsCount + 1
             end
         end
     end
     
-    -- Scan objects for model types
+    -- Scan objects
     if osmdata.objects then
-        for i, obj in ipairs(osmdata.objects) do
-            if obj.model then
-                resources.models[obj.model] = (resources.models[obj.model] or 0) + 1
-            end
+        summary.objectsCount = #osmdata.objects
+    end
+    
+    -- Scan areas
+    if osmdata.areas then
+        if osmdata.areas.forests then
+            summary.forestsCount = #osmdata.areas.forests
+        end
+        if osmdata.areas.grounds then
+            summary.groundsCount = #osmdata.areas.grounds
         end
     end
     
-    return resources
+    return summary
 end
 
--- Verify all resources exist in game
-local function verifyResources(resources)
-    local missing = {}
-    local found = 0
-    local total = 0
+-- Check core required resources
+local function checkCoreResources()
+    local issues = {}
     
-    -- Check track types
-    for typeName, count in pairs(resources.trackTypes) do
-        total = total + 1
-        if resourceExists("trackTypeRep", typeName) then
-            found = found + 1
-        else
-            table.insert(missing, {type = "track", name = typeName, count = count})
-        end
+    -- Check vanilla track type
+    if not resourceExists("trackTypeRep", "standard.lua") then
+        table.insert(issues, "Vanilla tracks not found")
     end
     
-    -- Check street types
-    for typeName, count in pairs(resources.streetTypes) do
-        total = total + 1
-        if resourceExists("streetTypeRep", typeName) then
-            found = found + 1
-        else
-            table.insert(missing, {type = "street", name = typeName, count = count})
-        end
+    -- Check vanilla street type  
+    if not resourceExists("streetTypeRep", "country_small_new.lua") then
+        table.insert(issues, "Vanilla streets not found")
     end
     
-    -- Check bridge types
-    for typeName, count in pairs(resources.bridgeTypes) do
-        total = total + 1
-        if resourceExists("bridgeTypeRep", typeName) then
-            found = found + 1
-        else
-            table.insert(missing, {type = "bridge", name = typeName, count = count})
-        end
+    -- Check vanilla bridge
+    if not resourceExists("bridgeTypeRep", "stone.lua") then
+        table.insert(issues, "Vanilla bridges not found")
     end
     
-    -- Check models (less critical)
-    for modelName, count in pairs(resources.models) do
-        total = total + 1
-        if resourceExists("modelRep", modelName) then
-            found = found + 1
-        else
-            table.insert(missing, {type = "model", name = modelName, count = count})
-        end
-    end
-    
-    return missing, found, total
+    return issues
 end
 
 -- Check core mods
 local function checkCoreMods()
     S.availableMods = {}
+    S.modVersions = {}
     
-    -- Forester
-    local hasForester = pcall(function()
-        return require "osm_importer.forester"
+    -- Forester uses: require "snowball/forester/forester"
+    local hasForester = false
+    local foresterOk = pcall(function()
+        require "snowball/forester/forester"
     end)
-    S.availableMods.forester = hasForester
+    if foresterOk then
+        hasForester = true
+    end
     
-    -- Paver
-    local hasPaver = pcall(function()
-        return require "osm_importer.paver"
+    -- Also check if our forester module can load
+    local foresterScriptOk = pcall(function()
+        require "osm_importer.forester"
     end)
-    S.availableMods.paver = hasPaver
+    S.availableMods.forester = hasForester and foresterScriptOk
     
-    return hasForester, hasPaver
+    print("[OSM-UI] Forester: snowball/forester/forester=" .. tostring(foresterOk) .. ", script=" .. tostring(foresterScriptOk))
+    
+    -- Paver uses: require "paver.main"
+    local hasPaver = false
+    local paverOk = pcall(function()
+        require "paver.main"
+    end)
+    if paverOk then
+        hasPaver = true
+    end
+    
+    local paverScriptOk = pcall(function()
+        require "osm_importer.paver"
+    end)
+    S.availableMods.paver = hasPaver and paverScriptOk
+    
+    print("[OSM-UI] Paver: paver.main=" .. tostring(paverOk) .. ", script=" .. tostring(paverScriptOk))
+    
+    return S.availableMods.forester, S.availableMods.paver
 end
 
 -- Run all automatic checks
@@ -235,77 +241,153 @@ local function runAllChecks()
         addLog("  Est. time: ~" .. estMinutes .. " minutes")
     end
     
-    -- 3. Check map bounds
+    -- 3. Check map bounds and show OSM vs TPF2 dimensions
+    addLog("")
+    addLog("Map dimensions:")
+    
+    -- Current TPF2 map size
     local mapOk, mapSize = pcall(function()
         return api.engine.terrain.getHeightmapSize()
     end)
     if mapOk and mapSize then
-        addLog("✓ Map size: " .. mapSize.x .. " x " .. mapSize.y)
+        -- TPF2 map is (heightmapSize - 1) * 16 meters
+        local mapWidthM = (mapSize.x - 1) * 16
+        local mapHeightM = (mapSize.y - 1) * 16
+        addLog("  TPF2 map: " .. string.format("%.1f", mapWidthM/1000) .. " x " .. string.format("%.1f", mapHeightM/1000) .. " km")
     end
     
-    -- Data bounds
+    -- OSM source dimensions (from Python conversion)
     if osmdata.bounds then
         local b = osmdata.bounds
-        local w = math.abs(b.maxX - b.minX)
-        local h = math.abs(b.maxY - b.minY)
-        addLog("  Data extent: " .. math.floor(w) .. " x " .. math.floor(h) .. "m")
-    end
-    
-    -- 4. Check core mods
-    addLog("")
-    addLog("Checking mods...")
-    local hasForester, hasPaver = checkCoreMods()
-    
-    if hasForester then
-        addLog("✓ Forester: available")
-    else
-        addLog("○ Forester: not found (forests skipped)")
-    end
-    
-    if hasPaver then
-        addLog("✓ Paver: available")
-    else
-        addLog("○ Paver: not found (surfaces skipped)")
-    end
-    
-    -- 5. Scan and verify resources in data
-    addLog("")
-    addLog("Verifying resources...")
-    local resources = scanOsmDataResources()
-    
-    if resources then
-        local missing, found, total = verifyResources(resources)
-        S.missingResources = missing
-        
-        if #missing == 0 then
-            addLog("✓ All " .. total .. " resource types found")
-        else
-            addLog("⚠️ Found " .. found .. "/" .. total .. " resources")
-            addLog("  Missing " .. #missing .. " types:")
-            -- Show first few missing
-            for i = 1, math.min(3, #missing) do
-                local m = missing[i]
-                addLog("  • " .. m.type .. ": " .. m.name)
+        if b.osm_width_km and b.osm_height_km then
+            addLog("  OSM source: " .. b.osm_width_km .. " x " .. b.osm_height_km .. " km")
+            if b.scale then
+                addLog("  Scale: 1:" .. string.format("%.0f", b.scale))
             end
-            if #missing > 3 then
-                addLog("  ... and " .. (#missing - 3) .. " more")
+        elseif b.maxX and b.minX then
+            -- Old format: data extent in meters
+            local w = math.abs(b.maxX - b.minX)
+            local h = math.abs(b.maxY - b.minY)
+            addLog("  Data extent: " .. math.floor(w) .. " x " .. math.floor(h) .. "m")
+        end
+        
+        -- Show preprocessing stats if available
+        if osmdata.preprocess_stats then
+            local ps = osmdata.preprocess_stats
+            if ps.filtered_edges and ps.filtered_edges > 0 then
+                addLog("  Pre-filtered: " .. ps.filtered_edges .. " out-of-bounds edges removed")
             end
         end
     end
     
-    -- 6. Final status
+    -- 4. Check core mods
+    addLog("")
+    addLog("Checking core mods...")
+    local hasForester, hasPaver = checkCoreMods()
+    
+    if hasForester then
+        local verStr = S.modVersions.forester and (" v" .. S.modVersions.forester) or ""
+        addLog("✓ Forester" .. verStr .. ": ready")
+    else
+        addLog("❌ Forester: NOT FOUND")
+        addLog("   Need: Forester v1.4+ Interface")
+        addLog("   Download from transportfever.net")
+        addLog("   (forests will be skipped)")
+    end
+    
+    if hasPaver then
+        addLog("✓ Paver: ready")
+    else
+        addLog("❌ Paver: NOT FOUND")
+        addLog("   Download from transportfever.net")
+        addLog("   (surfaces will be skipped)")
+    end
+    
+    -- 5. Scan data structure
+    addLog("")
+    local summary = scanOsmDataResources()
+    
+    if summary then
+        addLog("Data breakdown:")
+        addLog("  Tracks: " .. summary.tracksCount .. 
+               ", Streets: " .. summary.streetsCount)
+        addLog("  Bridges: " .. summary.bridgesCount .. 
+               ", Tunnels: " .. summary.tunnelsCount)
+        addLog("  Forests: " .. summary.forestsCount .. 
+               ", Surfaces: " .. summary.groundsCount)
+        addLog("  Objects: " .. summary.objectsCount)
+        S.dataSummary = summary
+    end
+    
+    -- 6. Check core resources
+    addLog("")
+    addLog("Checking core resources...")
+    local coreIssues = checkCoreResources()
+    S.missingResources = coreIssues
+    
+    if #coreIssues == 0 then
+        addLog("✓ Core resources available")
+    else
+        for _, issue in ipairs(coreIssues) do
+            addLog("⚠️ " .. issue)
+        end
+    end
+    
+    -- 7. Count available resources
+    addLog("")
+    addLog("Counting game resources...")
+    
+    local modReqOk, modReq = pcall(function()
+        return require("osm_importer.mod_requirements")
+    end)
+    
+    if modReqOk and modReq then
+        local checkOk, result = pcall(function()
+            return modReq.checkRequirements(osmdata)
+        end)
+        
+        if checkOk and result then
+            S.modRequirements = result
+            
+            -- Show resource counts
+            if result.resources then
+                addLog("Available in game:")
+                addLog("  " .. result.resources.tracks .. " track types")
+                addLog("  " .. result.resources.streets .. " street types")
+                addLog("  " .. result.resources.bridges .. " bridge types")
+            end
+            
+            -- Show detected mod packs
+            if result.installedPacks and #result.installedPacks > 0 then
+                addLog("")
+                addLog("Detected mods:")
+                for _, packName in ipairs(result.installedPacks) do
+                    addLog("  ✓ " .. packName)
+                end
+            end
+        else
+            addLog("⚠️ Could not count resources")
+        end
+    end
+    
+    -- 8. Final status
     addLog("")
     addLog("=== CHECKS COMPLETE ===")
     
-    local issues = #S.missingResources
-    if issues == 0 then
+    local coreIssues = #S.missingResources
+    local missingMods = S.modRequirements and S.modRequirements.totalMissing or 0
+    
+    if coreIssues == 0 and missingMods == 0 then
         setStatus("READY TO IMPORT ✓")
         S.readyToImport = true
-    elseif issues < 5 then
+    elseif coreIssues == 0 and missingMods > 0 then
+        setStatus("READY (" .. missingMods .. " mods missing)")
+        S.readyToImport = true
+    elseif coreIssues < 5 then
         setStatus("READY (minor issues)")
         S.readyToImport = true
     else
-        setStatus("⚠️ " .. issues .. " missing resources")
+        setStatus("⚠️ " .. coreIssues .. " missing resources")
         S.readyToImport = true  -- Still allow import
     end
     
@@ -352,24 +434,156 @@ local function runImport()
             skip_forests = not S.availableMods.forester,
             skip_surfaces = not S.availableMods.paver,
             clear_existing = S.options.clear_existing,
+            build_towns = S.options.build_towns,  -- Town labels (may crash)
         }
         
-        local main = require "osm_importer.main"
-        if main and main.run then
-            main.run(userOptions)
+        addLog("Loading modules directly...")
+        
+        -- Load modules directly, bypassing main.lua circular dependency
+        local osmdata, bulldoze, simpleproposalseq, towns, areas, models
+        
+        local loadOk, loadErr = pcall(function()
+            osmdata = require("osm_importer.osmdata")
+            bulldoze = require("osm_importer.bulldoze")
+            simpleproposalseq = require("osm_importer.simpleproposal_seq")
+            towns = require("osm_importer.towns")
+            areas = require("osm_importer.areas")
+            models = require("osm_importer.models")
+            
+            -- Create minimal osm_importer global for simpleproposal_seq
+            _G.osm_importer = _G.osm_importer or {}
+            _G.osm_importer.options = userOptions
+        end)
+        
+        if not loadOk then
+            addLog("❌ ERROR loading modules:")
+            addLog("  " .. tostring(loadErr))
+            setStatus("Import failed - module error")
+            return
+        end
+        
+        print("[OSM-UI] Modules loaded, starting import...")
+        addLog("Running import...")
+        
+        -- Run the import steps directly
+        local importOk, importErr = pcall(function()
+            -- Step 1: Towns (optional, can crash near water)
+            if userOptions.build_towns and osmdata.towns and #osmdata.towns > 0 then
+                print("[OSM-UI] Creating towns...")
+                pcall(function() towns.createTownLabels(osmdata.towns) end)
+            end
+            
+            -- Step 2: Clear existing (if requested)
+            if userOptions.clear_existing then
+                print("[OSM-UI] Clearing map...")
+                pcall(function() bulldoze.delAssets() end)
+                pcall(function() bulldoze.delEdges() end)
+            end
+            
+            -- Step 3: Areas (forests/surfaces)
+            if not userOptions.skip_forests and not userOptions.skip_surfaces then
+                if osmdata.areas and osmdata.nodes then
+                    print("[OSM-UI] Building areas...")
+                    pcall(function() areas.buildAreas(osmdata.areas, osmdata.nodes) end)
+                end
+            end
+            
+            -- Step 4: Build edges (main work)
+            if osmdata.edges and #osmdata.edges > 0 then
+                print("[OSM-UI] Building edges (" .. #osmdata.edges .. ")...")
+                
+                -- Debug: Check if vanilla types exist
+                local vanillaStreet = api.res.streetTypeRep.find("standard/country_small_new.lua")
+                local vanillaTrack = api.res.trackTypeRep.find("standard.lua")
+                local vanillaBridge = api.res.bridgeTypeRep.find("stone.lua")
+                local vanillaTunnel = api.res.tunnelTypeRep.find("railroad_old.lua")
+                
+                addLog("")
+                addLog("Vanilla asset check:")
+                addLog("  Street (standard/country_small_new.lua): " .. (vanillaStreet >= 0 and "OK" or "NOT FOUND"))
+                addLog("  Track (standard.lua): " .. (vanillaTrack >= 0 and "OK" or "NOT FOUND"))
+                addLog("  Bridge (stone.lua): " .. (vanillaBridge >= 0 and "OK" or "NOT FOUND"))
+                addLog("  Tunnel (railroad_old.lua): " .. (vanillaTunnel >= 0 and "OK" or "NOT FOUND"))
+                
+                if vanillaStreet < 0 or vanillaTrack < 0 then
+                    -- Try alternative names
+                    addLog("")
+                    addLog("Trying alternative names...")
+                    local alt1 = api.res.streetTypeRep.find("country_small_new.lua")
+                    local alt2 = api.res.streetTypeRep.find("town_small_new.lua")
+                    addLog("  country_small_new.lua: " .. (alt1 >= 0 and "OK (id=" .. alt1 .. ")" or "NOT FOUND"))
+                    addLog("  town_small_new.lua: " .. (alt2 >= 0 and "OK (id=" .. alt2 .. ")" or "NOT FOUND"))
+                    
+                    -- Get count of all types
+                    local streetCount = api.res.streetTypeRep.getCount()
+                    local trackCount = api.res.trackTypeRep.getCount()
+                    addLog("")
+                    addLog("Total available types:")
+                    addLog("  Streets: " .. streetCount)
+                    addLog("  Tracks: " .. trackCount)
+                    
+                    -- List first few street types if any
+                    if streetCount > 0 then
+                        addLog("First 5 street types:")
+                        for i = 0, math.min(4, streetCount - 1) do
+                            local name = api.res.streetTypeRep.getName(i)
+                            addLog("  [" .. i .. "] = " .. tostring(name))
+                        end
+                    end
+                end
+                addLog("")
+                
+                simpleproposalseq.SimpleProposalSeq(osmdata, userOptions)
+            end
+            
+            -- Step 5: Objects
+            if osmdata.objects and #osmdata.objects > 0 then
+                print("[OSM-UI] Building objects...")
+                pcall(function() models.buildObjects(osmdata.objects) end)
+            end
+        end)
+        
+        if importOk then
             addLog("=============================")
             addLog("IMPORT COMPLETE!")
+            
+            -- Report skip counts if available
+            local simpleproposal = package.loaded["osm_importer.simpleproposal"]
+            if simpleproposal and simpleproposal.getSkipCounts then
+                local skips = simpleproposal.getSkipCounts()
+                local totalSkipped = (skips.tracks or 0) + (skips.streets or 0)
+                if totalSkipped > 0 then
+                    addLog("")
+                    addLog("⚠️ Skipped (missing types):")
+                    if skips.tracks > 0 then
+                        addLog("  Tracks: " .. skips.tracks)
+                    end
+                    if skips.streets > 0 then
+                        addLog("  Streets: " .. skips.streets)
+                    end
+                    addLog("Install more mods for full import")
+                end
+            end
+            
+            addLog("")
             addLog("Check stdout.txt for details")
             addLog("=============================")
             setStatus("IMPORT COMPLETE ✓")
         else
-            addLog("ERROR: main.run not found")
+            addLog("❌ IMPORT ERROR:")
+            addLog("  " .. tostring(importErr))
+            addLog("")
+            addLog("Check stdout.txt for full error")
             setStatus("Import failed")
         end
     end)
     
     if not ok then
-        addLog("ERROR: " .. tostring(err))
+        addLog("❌ CRITICAL ERROR:")
+        addLog("  " .. tostring(err))
+        addLog("")
+        addLog("This may be a Lua syntax error.")
+        addLog("Check stdout.txt for details.")
         setStatus("Import failed - see log")
     end
 end
@@ -432,6 +646,7 @@ local function createWindow()
         addOption("Place Signals", "build_signals")
         addOption("Build Forests", "build_forests")
         addOption("Build Surfaces", "build_surfaces")
+        addOption("Create Towns (may crash)", "build_towns")
         addOption("Clear Map First", "clear_existing")
         
         layout:addItem(api.gui.comp.TextView.new(""))

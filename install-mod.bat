@@ -51,8 +51,8 @@ echo Copying mod files...
 copy /Y "%SCRIPT_DIR%mod.lua" "%MOD_DIR%\" >nul
 xcopy /E /I /Y "%SCRIPT_DIR%res" "%MOD_DIR%\res" >nul
 
-REM Check if osmdata.lua exists
-if exist "%MOD_DIR%\osmdata.lua" (
+REM Check if osmdata.lua exists in correct location
+if exist "%MOD_DIR%\res\scripts\osm_importer\osmdata.lua" (
     echo Preserved existing osmdata.lua
 )
 
@@ -65,7 +65,8 @@ echo Next steps:
 echo   1. Restart Transport Fever 2
 echo   2. Enable 'OSM Importer UI' in Mod Manager
 echo   3. Also enable: CommonAPI2, Forester, Paver
-echo   4. Place your osmdata.lua in the mod folder
+echo   4. Place your osmdata.lua in:
+echo      %MOD_DIR%\res\scripts\osm_importer\osmdata.lua
 echo.
 
 dir "%MOD_DIR%"

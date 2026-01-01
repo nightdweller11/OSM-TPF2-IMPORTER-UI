@@ -7,6 +7,7 @@ import read_osm
 import convert_data
 import optimize_edges
 import sort_edges
+import edge_preprocessor
 from lua_remove_nil import lua_remove_nil
 
 #################################################
@@ -54,6 +55,11 @@ bounds = {  # set bounds manually
 if len(sys.argv) > 4:
     coords = list(map(float, sys.argv[4].split(',')))
     bounds = dict((key, c) for key, c in zip(["minlat", "minlon", "maxlat", "maxlon"], coords))
+
+# Heightmap output (optional)
+HEIGHTMAP_FILE = None
+if len(sys.argv) > 5 and sys.argv[5]:
+    HEIGHTMAP_FILE = sys.argv[5]
 
 log(f"Input file: {INFILE}")
 log(f"Output file: {OUTFILE}")
@@ -190,7 +196,27 @@ progress.phase("sorting", "Sorting edges by priority...", 70)
 
 progress.step("Sorting edges by street type...")
 data["edges"] = sort_edges.sort(data["edges"])
-progress.step(f"Sorted {len(data['edges']):,} edges by type", percent=80)
+progress.step(f"Sorted {len(data['edges']):,} edges by type", percent=75)
+
+#################################################
+
+# 4b. Preprocess edges: filter out-of-bounds, order by continuity
+log("=" * 16 + " Preprocess Edges " + "=" * 16)
+progress.phase("preprocessing", "Preprocessing edges...", 75)
+
+preprocess_stats = {}
+progress.step("Filtering out-of-bounds edges...")
+data["edges"] = edge_preprocessor.preprocess_edges(
+    data["edges"], 
+    data["nodes"],
+    enable_batching=False,  # Batching handled in Lua for now
+    stats=preprocess_stats
+)
+
+log(f"Preprocessing stats: {preprocess_stats}")
+progress.step(f"Preprocessed: {preprocess_stats.get('final_count', 0):,} edges " +
+              f"(removed {preprocess_stats.get('edges_filtered', 0):,} out-of-bounds)", 
+              percent=80)
 
 #################################################
 
@@ -207,6 +233,40 @@ progress.phase("writing", "Writing Lua output file...", 85, {
     "output": os.path.basename(OUTFILE)
 })
 
+# Add map metadata to the output
+import math
+
+# Calculate real-world dimensions
+lat_diff = bounds["maxlat"] - bounds["minlat"]
+lon_diff = bounds["maxlon"] - bounds["minlon"]
+# Approximate meters (1 degree lat ≈ 111km, lon varies with latitude)
+avg_lat = (bounds["maxlat"] + bounds["minlat"]) / 2
+lat_meters = lat_diff * 111000
+lon_meters = lon_diff * 111000 * math.cos(math.radians(avg_lat))
+
+data["bounds"] = {
+    "minlat": bounds["minlat"],
+    "maxlat": bounds["maxlat"],
+    "minlon": bounds["minlon"],
+    "maxlon": bounds["maxlon"],
+    "osm_width_km": round(lon_meters / 1000, 2),
+    "osm_height_km": round(lat_meters / 1000, 2),
+    "tpf2_width": bounds_length[0],
+    "tpf2_height": bounds_length[1],
+    "scale": round(lon_meters / bounds_length[0], 2) if bounds_length[0] > 0 else 1,
+}
+
+# Add preprocessing stats if available
+if preprocess_stats:
+    data["preprocess_stats"] = {
+        "original_edges": preprocess_stats.get("original_count", 0),
+        "filtered_edges": preprocess_stats.get("edges_filtered", 0),
+        "final_edges": preprocess_stats.get("final_count", 0),
+    }
+
+log(f"Map metadata: OSM {data['bounds']['osm_width_km']}km x {data['bounds']['osm_height_km']}km -> TPF2 {bounds_length[0]}m x {bounds_length[1]}m")
+log(f"Scale: 1:{data['bounds']['scale']:.0f}")
+
 progress.step(f"Writing to {os.path.basename(OUTFILE)}...")
 progress.info("This may take a while for large datasets...")
 luadata.write(OUTFILE, data, indent="\t")
@@ -214,9 +274,48 @@ luadata.write(OUTFILE, data, indent="\t")
 # Get output file size
 try:
     output_size_mb = os.path.getsize(OUTFILE) / (1024 * 1024)
-    progress.step(f"Written {output_size_mb:.1f} MB", percent=95)
+    progress.step(f"Written {output_size_mb:.1f} MB", percent=90)
 except:
     output_size_mb = 0
+
+#################################################
+
+# 6. Generate heightmap (optional)
+heightmap_result = None
+if HEIGHTMAP_FILE:
+    log("=" * 16 + " Generate Heightmap " + "=" * 16)
+    progress.phase("heightmap", "Generating heightmap...", 90)
+    
+    try:
+        import heightmap
+        
+        def heightmap_progress(pct, msg):
+            progress.step(msg, percent=90 + (pct * 0.08))  # 90% to 98%
+        
+        heightmap_bounds = {
+            "minLat": bounds["minlat"],
+            "maxLat": bounds["maxlat"],
+            "minLon": bounds["minlon"],
+            "maxLon": bounds["maxlon"],
+        }
+        
+        progress.step("Downloading elevation data...")
+        heightmap_result = heightmap.generate_heightmap_for_bounds(
+            heightmap_bounds, 
+            HEIGHTMAP_FILE,
+            resolution=256,  # Will be upscaled to 1025
+            progress_callback=heightmap_progress
+        )
+        
+        log(f"Heightmap generated: {HEIGHTMAP_FILE}")
+        log(f"  Elevation range: {heightmap_result['min_elevation']:.1f}m to {heightmap_result['max_elevation']:.1f}m")
+        progress.step(f"Heightmap: {heightmap_result['size']}x{heightmap_result['size']}", percent=98)
+        
+    except Exception as e:
+        log(f"WARNING: Heightmap generation failed: {e}")
+        progress.step(f"Heightmap failed: {e}", percent=98)
+        import traceback
+        traceback.print_exc()
 
 #################################################
 

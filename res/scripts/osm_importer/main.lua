@@ -180,18 +180,22 @@ function osm_importer.run(userOptions)
 	local skipSurfaces = options.skip_surfaces
 	
 	-- (1) Town labels - OPTIONAL, can cause crashes near water
-	if osmdata.towns and #osmdata.towns > 0 then
-		safeCall("Step 1: Creating town labels (" .. #osmdata.towns .. " towns)", function()
-			osm_importer.towns.createTownLabels(osmdata.towns)
-		end, "Town labels skipped - may need manual creation")
+	if options.build_towns then
+		if osmdata.towns and #osmdata.towns > 0 then
+			safeCall("Step 1: Creating town labels (" .. #osmdata.towns .. " towns)", function()
+				osm_importer.towns.createTownLabels(osmdata.towns)
+			end, "Town labels skipped - may need manual creation")
+			
+			-- Disable town development (optional, may not work in all contexts)
+			safeCall("Disabling town development", function()
+				osm_importer.towns.setAllTownsDevActive(false)
+			end)
+		else
+			print("[OSM Importer] Step 1: No towns in data, skipping")
+		end
 	else
-		print("[OSM Importer] Step 1: No towns in data, skipping")
+		print("[OSM Importer] Step 1: Towns disabled (can crash near water)")
 	end
-	
-	-- Disable town development (optional, may not work in all contexts)
-	safeCall("Disabling town development", function()
-		osm_importer.towns.setAllTownsDevActive(false)
-	end)
 	
 	-- Clear existing content if requested
 	-- Done carefully to avoid crashes - pause first, then clear
@@ -273,10 +277,15 @@ function osm_importer.run(userOptions)
 	print("[OSM Importer] ========================================")
 end
 
+-- Debug: confirm run function exists
+print("[OSM main] osm_importer.run type: " .. type(osm_importer.run))
+
 -- Expose to the global table for console access (using rawset to bypass restriction)
 rawset(_G, "osm_importer", osm_importer)
 rawset(_G, "m", osm_importer)
 rawset(_G, "osmdata", osmdata)
 rawset(_G, "bulldoze", bulldoze)
+
+print("[OSM main] Exported to _G")
 
 return osm_importer

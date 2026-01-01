@@ -7,16 +7,18 @@ Import real-world OpenStreetMap data into Transport Fever 2.
 Automatically builds streets, tracks, forests, and more from OSM exports.
 
 HOW TO USE:
-1. Press ` (backtick) to open console
-2. Type: osm()
-3. Press Enter
+1. Look for the OSM Import checkbox in the bottom toolbar
+2. Click it to open the import window
+3. Or press ` and type: osm()
 
-Or type the full command:
-  require "osm_importer.main" m.gui.show()
+REQUIRED MODS (for full functionality):
+- Forester (for forests)
+- Paver (for ground textures)
+- Natural Environment Professional 2 (for tracks)
 
-Requires: CommonAPI2, Forester, Paver
+Download mod bundles from the OSM Importer website.
 ]],
-			minorVersion = 10,
+			minorVersion = 11,
 			severityAdd = "NONE",
 			severityRemove = "NONE",
 			tags = {"Script Mod", "Misc"},
@@ -32,6 +34,14 @@ Requires: CommonAPI2, Forester, Paver
 				},
 			},
 			url = "https://github.com/Vacuum-Tube/OSM-TPF2-Importer",
+		},
+		
+		-- Optional dependencies - game will suggest enabling these if installed
+		-- Note: These use the mod folder names, not Steam IDs
+		-- The game will show a warning if these are not enabled
+		optionalDependencies = {
+			"snowball_forester_1",           -- Forester (required for forests)
+			"unixroot_natural_environment_pro_tpf2_2",  -- NEP2 (track types)
 		},
 		-- postRunFn runs when mod is loaded with a game
 		postRunFn = function (settings)

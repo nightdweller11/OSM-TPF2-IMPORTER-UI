@@ -1,8 +1,10 @@
 local bt = {}
 
--- default_type = "cement.lua",  -- Vanilla
+-- VANILLA fallback bridges (always available)
+local VANILLA_BRIDGE = "stone.lua"  -- Standard vanilla bridge
+local VANILLA_STREET_BRIDGE = "cement.lua"  -- Vanilla street bridge
 
-------------- Mods
+------------- Mods (may not be installed - use with fallback!)
 
 -- Autobahn_Kreuz_1
 local autobahn = "Autobahn_aq.lua"  -- 2 thin pillars, green railing
@@ -32,6 +34,23 @@ local greengitter = "gitterbruecke_o.lua"  -- no pillar, medium flat
 -- 2060132685 Vienna Fever: Bridge and Retaining Wall
 local invisible = "vienna_fever_infra_leere_bruecke.lua"
 
+-- Helper to check if a bridge type exists
+local function bridgeExists(bridgeType)
+	if not bridgeType then return false end
+	local ok, idx = pcall(function()
+		return api.res.bridgeTypeRep.find(bridgeType)
+	end)
+	return ok and idx and idx >= 0
+end
+
+-- Get bridge with fallback to vanilla
+local function getWithFallback(preferred, fallback)
+	if bridgeExists(preferred) then
+		return preferred
+	end
+	return fallback or VANILLA_BRIDGE
+end
+
 
 bt.streettypes = {
 	motorway = autobahn,
@@ -59,18 +78,26 @@ bt.streettypes = {
 
 function bt.getType(data)
 	if data.track then
-		-- if data.track.speed and data.track.speed>120 then
-			-- return ang_t1
-		-- else
-			-- return greengitter  -- overlaps for double tracks
-		-- end
-		return invisible
+		-- For tracks, try invisible bridge first, fall back to vanilla stone
+		local preferred = invisible
+		if bridgeExists(preferred) then
+			return preferred
+		end
+		-- Fallback to vanilla bridge for tracks
+		print("[Bridge] Using vanilla fallback for track bridge (invisible bridge not installed)")
+		return VANILLA_BRIDGE
 	else 
 		local btype = bt.streettypes[data.street.type]
 		if not btype then
-			print("No Bridge Type for street type: "..data.street.type)
+			print("[Bridge] No Bridge Type for street type: " .. tostring(data.street.type) .. ", using vanilla")
+			return VANILLA_STREET_BRIDGE
 		end
-		return btype  -- nil if type not in table
+		-- Check if preferred bridge exists, fallback to vanilla
+		if bridgeExists(btype) then
+			return btype
+		end
+		print("[Bridge] Bridge type '" .. btype .. "' not found, using vanilla fallback")
+		return VANILLA_STREET_BRIDGE
 	end
 end
 

@@ -303,7 +303,23 @@ async function processConversion(conversionId: string): Promise<void> {
     // Run Python conversion
     const outputFile = path.join(storageDir, `${conversionId}.lua`);
     
+    // Check if heightmap generation is requested (from config JSON)
+    let generateHeightmap = true;  // Default to true
+    try {
+      const configData = conversion.config ? JSON.parse(conversion.config) : {};
+      generateHeightmap = configData.generateHeightmap !== false;  // Default true unless explicitly false
+    } catch {
+      // Use default
+    }
+    
+    const heightmapFile = generateHeightmap 
+      ? path.join(storageDir, `${conversionId}_heightmap.png`)
+      : undefined;
+    
     log("phase", "Starting Python conversion...", 20);
+    if (generateHeightmap) {
+      log("step", "Heightmap generation enabled");
+    }
 
     // Set up progress listener
     runner.on("progress", async (progress) => {
@@ -339,10 +355,23 @@ async function processConversion(conversionId: string): Promise<void> {
         width: conversion.mapWidth,
         height: conversion.mapHeight,
       },
+      heightmapFile,
     });
 
     if (!result.success) {
       throw new Error(result.error || "Conversion failed");
+    }
+
+    // Check if heightmap was generated
+    let heightmapGenerated = false;
+    if (heightmapFile) {
+      try {
+        await fs.access(heightmapFile);
+        heightmapGenerated = true;
+        log("step", "Heightmap generated successfully", 98);
+      } catch {
+        log("step", "Heightmap generation skipped or failed", 98);
+      }
     }
 
     // Update conversion as completed
@@ -352,6 +381,7 @@ async function processConversion(conversionId: string): Promise<void> {
         status: "COMPLETED",
         progress: 100,
         luaFile: result.outputFile || null,
+        heightmapFile: heightmapGenerated ? heightmapFile : null,
         logFile: result.logFile || null,
         stats: result.stats ? JSON.stringify(result.stats) : null,
         completedAt: new Date(),

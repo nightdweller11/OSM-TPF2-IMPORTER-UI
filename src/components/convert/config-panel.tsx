@@ -28,6 +28,7 @@ export interface ConversionConfig {
   includeSignals: boolean;
   includeStreams: boolean;
   includePaths: boolean;
+  generateHeightmap: boolean;  // Auto-generate heightmap from elevation data
 }
 
 interface ConfigPanelProps {
@@ -216,40 +217,38 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
         </CardContent>
       </Card>
 
-      {/* Heightmap Info */}
+      {/* Heightmap Generation */}
       <Card className="border-blue-500/30">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Mountain className="h-4 w-4" />
-            Heightmap (Optional)
+            Terrain Heightmap
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            A heightmap creates realistic terrain. Without one, your map will be flat.
-            Heightmaps must be downloaded separately and placed in TPF2&apos;s heightmaps folder.
-          </p>
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="generateHeightmap"
+              checked={config.generateHeightmap}
+              onCheckedChange={(checked) =>
+                onChange({ ...config, generateHeightmap: checked === true })
+              }
+            />
+            <div className="space-y-1">
+              <Label htmlFor="generateHeightmap" className="font-medium cursor-pointer">
+                Generate Heightmap Automatically
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Downloads real elevation data and creates a TPF2-compatible heightmap PNG.
+                Creates realistic terrain with hills, valleys, and water areas.
+              </p>
+            </div>
+          </div>
           
-          <div className="flex flex-wrap gap-2">
-            <a
-              href={`https://heightmap.skydark.pl/?lat=${37.7749}&lng=${-122.4194}&size=${Math.round(config.mapWidth / 1000)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-            >
-              <ExternalLink className="h-3 w-3" />
-              Skydark Heightmap Tool
-            </a>
-            <span className="text-muted-foreground">•</span>
-            <a
-              href="https://terraining.ateliernonta.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-            >
-              <ExternalLink className="h-3 w-3" />
-              Terraining
-            </a>
+          <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+            <p className="font-medium mb-1">Without heightmap:</p>
+            <p>• Map will be completely flat</p>
+            <p>• Streets/tracks will work but terrain won&apos;t match reality</p>
           </div>
           
           <button
@@ -257,7 +256,7 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
           >
             <Info className="h-3 w-3" />
-            How to add a heightmap
+            Manual heightmap alternatives
             {showHeightmapInfo ? (
               <ChevronUp className="h-3 w-3" />
             ) : (
@@ -266,9 +265,30 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
           </button>
           
           {showHeightmapInfo && (
-            <pre className="text-xs bg-background/50 rounded p-2 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">
-              {HEIGHTMAP_INSTRUCTIONS}
-            </pre>
+            <div className="space-y-2 text-xs">
+              <p className="text-muted-foreground">External tools for higher quality heightmaps:</p>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={`https://heightmap.skydark.pl/`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Skydark
+                </a>
+                <span className="text-muted-foreground">•</span>
+                <a
+                  href="https://terraining.ateliernonta.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Terraining
+                </a>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -20,14 +20,25 @@ function h.setAllNodesHeight(nodes,paths,edges)
 	for _,path in pairs(paths.ground) do  -- paths between crossings and bridge ends
 		local path_z = {}
 		local nodes_idx = {}
+		local skip_path = false
 		for i=1,#path-1 do
 			local node0 = path[i]
 			local node1 = path[i+1]
+			if not nodes[node0] or not nodes[node1] then
+				-- Node was filtered out, skip this path
+				skip_path = true
+				break
+			end
 			local p0 = nodes[node0].pos
 			p0 = vec3.new(p0[1], p0[2], 0)  -- vec2 has no meta methods
 			local p1 = nodes[node1].pos
 			p1 = vec3.new(p1[1], p1[2], 0)
-			local edge = assert(edgedict[node0.."--"..node1], "No edge "..node0.."-"..node1)
+			local edge = edgedict[node0.."--"..node1]
+			if not edge then
+				-- Edge was filtered out during preprocessing, skip this path
+				skip_path = true
+				break
+			end
 			if edge.node0~=node0 then  -- edge reverse to path
 				assert(edge.node0==node1)
 			end
@@ -49,9 +60,19 @@ function h.setAllNodesHeight(nodes,paths,edges)
 			nodes_idx[node1] = #path_z
 		end
 		
+		-- Skip this path if edges were missing
+		if skip_path then
+			-- Path references filtered edges, skip smoothing
+			goto continue_path
+		end
+		
 		-- apply Gaussian Filter
 		-- local max_slope = 0.04/2  -- maximal derivative of step response: 1/(sqrt(2pi)*sigma) * step_size!
-		local sigma = edgedict[path[1].."--"..path[2]].track and 50 or 25  --1/(math.sqrt(2*math.pi)*max_slope)  -- [meters]
+		local firstEdge = edgedict[path[1].."--"..path[2]]
+		if not firstEdge then
+			goto continue_path  -- Edge was filtered
+		end
+		local sigma = firstEdge.track and 50 or 25  --1/(math.sqrt(2*math.pi)*max_slope)  -- [meters]
 		local window_size = math.ceil(2*sigma)  -- make not too big in case of unintended terrain, e.g. overpass
 		local smoothed_z = h.gaussian_smooth(path_z, sigma, window_size)
 		-- path ends z can also change
@@ -64,20 +85,31 @@ function h.setAllNodesHeight(nodes,paths,edges)
 		-- for _,node in pairs{path[1],path[#path]} do  -- fix node heights of path endpoints
 			-- nodes[node].pos[3] = tools.getTerrainZ(nodes[node].pos[1], nodes[node].pos[2])
 		-- end
+		
+		::continue_path::
 	end
 	print("z heights ground paths set ")
 	
 	for _,path in pairs(paths.bridge) do  -- linear interpolation to place intermediate bridge nodes in the air
+		-- Check if nodes exist (may have been filtered)
+		if not nodes[path[1]] or not nodes[path[#path]] then
+			goto continue_bridge
+		end
 		local p_start = tools.Vec2f(nodes[path[1]].pos)
 		local p_end = tools.Vec2f(nodes[path[#path]].pos)
-		local z_start = assert(nodes[path[1]].pos[3], "Node no z value: "..path[1])
-		local z_end = assert(nodes[path[#path]].pos[3], "Node no z value: "..path[#path])
+		local z_start = nodes[path[1]].pos[3]
+		local z_end = nodes[path[#path]].pos[3]
+		if not z_start or not z_end then
+			goto continue_bridge  -- Missing z values, skip
+		end
 		for i,node in pairs(path) do
+			if not nodes[path[i]] then goto continue_bridge end
 			local p_i = tools.Vec2f(nodes[path[i]].pos)
 			if i>1 and i<#path then
 				nodes[node].pos[3] = z_start + (z_end-z_start)*tools.VecDist(p_start,p_i)/tools.VecDist(p_start,p_end)
 			end
 		end
+		::continue_bridge::
 	end
 	print("z heights bridge paths set ")
 	
@@ -85,8 +117,13 @@ function h.setAllNodesHeight(nodes,paths,edges)
 	  -- set z tangents 
 	for _,pathss in pairs{paths.track, paths.street} do
 	for _,path in pairs(pathss) do
+		local skip_tangent_path = false
 		local tangents = {}
 		for i=2,#path-1 do
+			if not nodes[path[i-1]] or not nodes[path[i]] or not nodes[path[i+1]] then
+				skip_tangent_path = true
+				break
+			end
 			local p0 = tools.vec3(nodes[path[i-1]].pos)  -- now with z
 			local p1 = tools.vec3(nodes[path[i]].pos)
 			local p2 = tools.vec3(nodes[path[i+1]].pos)
@@ -103,15 +140,20 @@ function h.setAllNodesHeight(nodes,paths,edges)
 			tangents[i] = tangZ
 		end
 		
+		if skip_tangent_path then goto continue_tangent end
+		
 		for i=1,#path-1 do
 			local node0 = path[i]
 			local node1 = path[i+1]
+			if not nodes[node0] or not nodes[node1] then
+				goto continue_tangent
+			end
 			local p0 = tools.vec3(nodes[node0].pos)
 			local p1 = tools.vec3(nodes[node1].pos)
 			local length = vec3.distance(p0,p1)
-			local edge = assert(edgedict[node0.."--"..node1], "Not in edgedict: "..node0.."--"..node1)
-			assert(edge.node0==node0, node0)
-			assert(edge.node1==node1, node1)
+			local edge = edgedict[node0.."--"..node1]
+			if not edge then goto continue_tangent end  -- Edge was filtered
+			if edge.node0 ~= node0 or edge.node1 ~= node1 then goto continue_tangent end
 			if i>1 then
 				if not edge.tangent0 then
 					edge.tangent0 = {}
@@ -128,6 +170,7 @@ function h.setAllNodesHeight(nodes,paths,edges)
 				edge.tangent1[3] = tangents[i+1]*length
 			end
 		end
+		::continue_tangent::
 	end
 	end	
 	print("z tangents set")

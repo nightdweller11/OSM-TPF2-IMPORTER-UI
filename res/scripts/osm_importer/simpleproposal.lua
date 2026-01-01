@@ -4,10 +4,160 @@ local tracktypes = require"osm_importer.types_track"
 local bridgetypes = require"osm_importer.types_bridge"
 local tunneltypes = require"osm_importer.types_tunnel"
 local signaltypes = require"osm_importer.types_signal"
+local typecache = require"osm_importer.type_cache"
 
 local default_cbLevel = 1
 
 local s = { }
+
+-- Counters for skipped elements
+s.skipped = {
+    tracks = 0,
+    streets = 0,
+    bridges = 0,
+    tunnels = 0,
+}
+
+-- Cached fallback IDs (discovered dynamically)
+s.cachedFallbacks = {
+    street = nil,
+    track = nil,
+    bridge = nil,
+    tunnel = nil,
+}
+
+function s.resetSkipCounters()
+    s.skipped = { tracks = 0, streets = 0, bridges = 0, tunnels = 0 }
+    s.cachedFallbacks = { street = nil, track = nil, bridge = nil, tunnel = nil }
+end
+
+function s.getSkipCounts()
+    return s.skipped
+end
+
+-- Dynamically find a working street type
+function s.getStreetFallbackId()
+    if s.cachedFallbacks.street ~= nil then
+        return s.cachedFallbacks.street
+    end
+    
+    -- Try known vanilla names in different formats
+    local vanillaStreetNames = {
+        "standard/country_small_new.lua",
+        "standard/town_small_new.lua",
+        "country_small_new.lua",
+        "town_small_new.lua",
+    }
+    
+    for _, name in ipairs(vanillaStreetNames) do
+        local id = api.res.streetTypeRep.find(name)
+        if id >= 0 then
+            print("[OSM] Found street fallback: " .. name .. " (id=" .. id .. ")")
+            s.cachedFallbacks.street = id
+            return id
+        end
+    end
+    
+    -- Last resort: use the first available street type
+    local count = api.res.streetTypeRep.getCount()
+    if count > 0 then
+        local firstName = api.res.streetTypeRep.getName(0)
+        print("[OSM] Using first available street type: " .. tostring(firstName) .. " (id=0)")
+        s.cachedFallbacks.street = 0
+        return 0
+    end
+    
+    print("[OSM] ERROR: No street types available at all!")
+    s.cachedFallbacks.street = -1
+    return -1
+end
+
+-- Dynamically find a working track type
+function s.getTrackFallbackId()
+    if s.cachedFallbacks.track ~= nil then
+        return s.cachedFallbacks.track
+    end
+    
+    local vanillaTrackNames = {
+        "standard.lua",
+        "high_speed.lua",
+    }
+    
+    for _, name in ipairs(vanillaTrackNames) do
+        local id = api.res.trackTypeRep.find(name)
+        if id >= 0 then
+            print("[OSM] Found track fallback: " .. name .. " (id=" .. id .. ")")
+            s.cachedFallbacks.track = id
+            return id
+        end
+    end
+    
+    -- Last resort: use the first available track type
+    local count = api.res.trackTypeRep.getCount()
+    if count > 0 then
+        print("[OSM] Using first available track type (id=0)")
+        s.cachedFallbacks.track = 0
+        return 0
+    end
+    
+    print("[OSM] ERROR: No track types available at all!")
+    s.cachedFallbacks.track = -1
+    return -1
+end
+
+-- Dynamically find a working bridge type
+function s.getBridgeFallbackId()
+    if s.cachedFallbacks.bridge ~= nil then
+        return s.cachedFallbacks.bridge
+    end
+    
+    local vanillaBridgeNames = { "stone.lua", "cement.lua", "iron.lua" }
+    
+    for _, name in ipairs(vanillaBridgeNames) do
+        local id = api.res.bridgeTypeRep.find(name)
+        if id >= 0 then
+            print("[OSM] Found bridge fallback: " .. name .. " (id=" .. id .. ")")
+            s.cachedFallbacks.bridge = id
+            return id
+        end
+    end
+    
+    local count = api.res.bridgeTypeRep.getCount()
+    if count > 0 then
+        s.cachedFallbacks.bridge = 0
+        return 0
+    end
+    
+    s.cachedFallbacks.bridge = -1
+    return -1
+end
+
+-- Dynamically find a working tunnel type
+function s.getTunnelFallbackId()
+    if s.cachedFallbacks.tunnel ~= nil then
+        return s.cachedFallbacks.tunnel
+    end
+    
+    local vanillaTunnelNames = { "railroad_old.lua", "street_old.lua" }
+    
+    for _, name in ipairs(vanillaTunnelNames) do
+        local id = api.res.tunnelTypeRep.find(name)
+        if id >= 0 then
+            print("[OSM] Found tunnel fallback: " .. name .. " (id=" .. id .. ")")
+            s.cachedFallbacks.tunnel = id
+            return id
+        end
+    end
+    
+    local count = api.res.tunnelTypeRep.getCount()
+    if count > 0 then
+        s.cachedFallbacks.tunnel = 0
+        return 0
+    end
+    
+    s.cachedFallbacks.tunnel = -1
+    return -1
+end
 
 local function options()
 	return osm_importer.options
@@ -54,10 +204,16 @@ function s.cmdcallback(cbLevel,cbFunc,retryWSmStreet)
 							street = false
 							break
 						end
-						edge.streetEdge.streetType = api.res.streetTypeRep.find(streettypes.small_type)
+						-- Use cached type for small street
+						local smallTypeId = typecache.getStreetId(streettypes.small_type)
+						if smallTypeId < 0 then
+							street = false  -- Can't retry, skip this edge
+							break
+						end
+						edge.streetEdge.streetType = smallTypeId
 					end
 				end
-				if street then
+				if street and res and res.streetProposal and res.streetProposal.edgesToAdd and #res.streetProposal.edgesToAdd > 0 then
 					print("Retry with Small Street")
 					api.cmd.sendCommand(res, s.cmdcallback(cbLevel, cbFunc, false))
 					return
@@ -247,10 +403,11 @@ function s.Edge(id,edge,getNodeEntity,getNodePos)
 		if not ttype or ttype=="" then
 			return
 		end
-		e.trackEdge.trackType = api.res.trackTypeRep.find(ttype)
-		if e.trackEdge.trackType<0 then
-			print("ERROR: Track Type not found: '"..ttype.."' track"..toString(track).." (Mod missing?)")
-			assert(not options().crash_type_not_found)
+		-- Use cached type lookup
+		e.trackEdge.trackType = typecache.getTrackId(ttype)
+		if e.trackEdge.trackType < 0 then
+			s.skipped.tracks = s.skipped.tracks + 1
+			return  -- Skip this edge entirely
 		end
 		e.trackEdge.catenary = not not track.electrified  -- bool()
 		if track.reverse then  -- reverse added from certain track type
@@ -260,14 +417,15 @@ function s.Edge(id,edge,getNodeEntity,getNodePos)
 	elseif edge.street then
 		local street = edge.street
 		e.type = 0
-		local stype = streettypes.getType(street,options())
-		if not stype or stype=="" then
+		local stype = streettypes.getType(street, options())
+		if not stype or stype == "" then
 			return
 		end
-		e.streetEdge.streetType = api.res.streetTypeRep.find(stype)
-		if e.streetEdge.streetType<0 then
-			print("ERROR: Street Type not found: '"..stype.."' street"..toString(street).." (Mod missing?)")
-			assert(not options().crash_type_not_found)
+		-- Use cached type lookup
+		e.streetEdge.streetType = typecache.getStreetId(stype)
+		if e.streetEdge.streetType < 0 then
+			s.skipped.streets = s.skipped.streets + 1
+			return  -- Skip this edge entirely
 		end
 		e.streetEdge.hasBus = street.buslane or false
 		e.streetEdge.tramTrackType = (street.tram==true and 2) or (street.tram==false and 1) or 0
@@ -284,10 +442,10 @@ function s.Edge(id,edge,getNodeEntity,getNodePos)
 		if not bridgeType then
 			return
 		end
-		e.comp.typeIndex = api.res.bridgeTypeRep.find(bridgeType)
-		if e.comp.typeIndex<0 then
-			print("ERROR: Bridge Type not found: '"..bridgeType.."' edge"..toString(edge).." (Mod missing?)")
-			assert(not options().crash_type_not_found)
+		-- Use cached type lookup
+		e.comp.typeIndex = typecache.getBridgeId(bridgeType)
+		if e.comp.typeIndex < 0 then
+			e.comp.type = 0  -- Remove bridge component
 		end
 	end
 	
@@ -300,10 +458,10 @@ function s.Edge(id,edge,getNodeEntity,getNodePos)
 		if not tunnelType then
 			return
 		end
-		e.comp.typeIndex = api.res.tunnelTypeRep.find(tunnelType)
-		if e.comp.typeIndex<0 then
-			print("ERROR: Tunnel Type not found: '"..tunnelType.."' edge"..toString(edge).." (Mod missing?)")
-			assert(not options().crash_type_not_found)
+		-- Use cached type lookup
+		e.comp.typeIndex = typecache.getTunnelId(tunnelType)
+		if e.comp.typeIndex < 0 then
+			e.comp.type = 0  -- Remove tunnel component
 		end
 	end
 	

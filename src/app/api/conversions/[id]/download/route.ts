@@ -84,10 +84,17 @@ if [ ! -d "$MOD_DIR" ]; then
     exit 1
 fi
 
-DEST_FILE="$MOD_DIR/osmdata.lua"
+# osmdata.lua goes in res/scripts/osm_importer/ subdirectory
+DEST_DIR="$MOD_DIR/res/scripts/osm_importer"
+if [ ! -d "$DEST_DIR" ]; then
+    echo -e "\${RED}ERROR: Mod structure invalid - missing res/scripts/osm_importer!\${NC}"
+    exit 1
+fi
+
+DEST_FILE="$DEST_DIR/osmdata.lua"
 if [ -f "$DEST_FILE" ]; then
     echo -e "\${YELLOW}WARNING: osmdata.lua already exists!\${NC}"
-    BACKUP_FILE="$MOD_DIR/osmdata.lua.backup.$(date +%Y%m%d_%H%M%S)"
+    BACKUP_FILE="$DEST_DIR/osmdata.lua.backup.$(date +%Y%m%d_%H%M%S)"
     read -p "Replace it? (y/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -160,14 +167,23 @@ if not exist "%MOD_DIR%" (
     exit /b 1
 )
 
-set "DEST_FILE=%MOD_DIR%\\osmdata.lua"
+REM osmdata.lua goes in res\\scripts\\osm_importer\\ subdirectory
+set "DEST_DIR=%MOD_DIR%\\res\\scripts\\osm_importer"
+
+if not exist "%DEST_DIR%" (
+    echo ERROR: Mod structure invalid - missing res\\scripts\\osm_importer!
+    pause
+    exit /b 1
+)
+
+set "DEST_FILE=%DEST_DIR%\\osmdata.lua"
 
 if exist "%DEST_FILE%" (
     echo WARNING: osmdata.lua already exists!
     set /p "CONFIRM=Replace it? (y/n): "
     if /i "!CONFIRM!" neq "y" exit /b 0
     for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set datetime=%%I
-    copy "%DEST_FILE%" "%MOD_DIR%\\osmdata.lua.backup.%datetime:~0,8%_%datetime:~8,6%" > nul
+    copy "%DEST_FILE%" "%DEST_DIR%\\osmdata.lua.backup.%datetime:~0,8%_%datetime:~8,6%" > nul
 )
 
 copy /y "%SOURCE_FILE%" "%DEST_FILE%" > nul
@@ -196,7 +212,7 @@ macOS/Linux:
 MANUAL INSTALLATION:
 --------------------
 Copy "osmdata.lua" to:
-  <TPF2 installation>/mods/osm_importer_ui_1/osmdata.lua
+  <TPF2 installation>/mods/osm_importer_ui_1/res/scripts/osm_importer/osmdata.lua
 
 AFTER INSTALLATION:
 -------------------

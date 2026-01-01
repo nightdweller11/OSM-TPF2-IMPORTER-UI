@@ -84,6 +84,7 @@ export const conversions = sqliteTable("conversions", {
   stats: text("stats"),
   osmFile: text("osm_file"),
   luaFile: text("lua_file"),
+  heightmapFile: text("heightmap_file"),  // Generated heightmap PNG
   logFile: text("log_file"),
   thumbnail: text("thumbnail"),
   status: text("status").$type<"PENDING" | "DOWNLOADING_OSM" | "PROCESSING" | "OPTIMIZING" | "COMPLETED" | "FAILED">().default("PENDING").notNull(),

@@ -169,22 +169,37 @@ export const IMPORT_OPTIONS_META: ImportOptionMeta[] = [
 
 // All required mods for the importer
 export const ALL_REQUIRED_MODS = [
-  { name: "CommonAPI2", url: "https://www.transportfever.net/filebase/index.php?entry/4806-commonapi2/", required: true, description: "Required for script console access" },
-  { name: "Forester", url: "https://www.transportfever.net/filebase/entry/4856-förster/", required: true, description: "Required for forest areas" },
-  { name: "Paver (Pflasterer)", url: "https://www.transportfever.net/filebase/entry/7713-paver-pflasterer/", required: true, description: "Required for ground surfaces" },
-  { name: "Natural Environment Pro", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=unixroot_natural_environment_pro_tpf2_1", required: false, description: "High quality track textures" },
-  { name: "ETH Schotterbett", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=ETH_Schotterbett_1", required: false, description: "Track ballast" },
-  { name: "RTP Roads V2", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=easybr_rtp", required: false, description: "Road textures pack" },
-  { name: "Marc26 Tram Streets", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=marc_strassetram_1", required: false, description: "Streets with tram tracks" },
-  { name: "JoeFried Roads", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=joefried_roadstrassen_em_2", required: false, description: "Various road types" },
-  { name: "Melectro Autobahn", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=Autobahn_Kreuz_1", required: false, description: "Motorway/highway roads" },
-  { name: "Lollo Street Fine Tuning", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=2021038808", required: false, description: "Narrow paths and streets" },
-  { name: "Extended Roads Footpaths", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=1968514713", required: false, description: "Footpaths" },
-  { name: "Majuen SMP", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=majuen_smp_1", required: false, description: "Pedestrian zones and bike lanes" },
-  { name: "Relozu Water Textures", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=relozu_terrain_material_water_1", required: false, description: "Water streets for streams" },
-  { name: "MKH Airport Roads", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=2232249704", required: false, description: "Airport runways and taxiways" },
-  { name: "Vienna Fever Infrastruktur", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=2060012969", required: false, description: "Metro/Stadtbahn tracks" },
-  { name: "EIS OS Track Package", url: "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id=eis_os_trackpackage_1", required: false, description: "Various gauge tracks" },
+  // ===========================================
+  // ESSENTIAL MODS (from transportfever.net)
+  // ===========================================
+  { name: "Forester", steamId: null, url: "https://www.transportfever.net/filebase/entry/4856-f%C3%B6rster/", required: true, description: "Required for forests (use v1.4 Interface!)", source: "tfnet" },
+  { name: "Paver", steamId: null, url: "https://www.transportfever.net/filebase/entry/7713-paver-pflasterer/", required: true, description: "Required for ground surfaces", source: "tfnet" },
+  { name: "RTP (Roads'n Trams Projekt)", steamId: null, url: "https://www.transportfever.net/filebase/entry/5675-roads-n-trams-projekt-rtp/", required: true, description: "Paths, farm roads, country roads", source: "tfnet" },
+  
+  // ESSENTIAL MODS (from Steam Workshop)
+  { name: "Vienna Fever: Infrastructure", steamId: "2060012969", url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2060012969", required: true, description: "Tram/metro track types", source: "steam" },
+  { name: "Vienna Fever: Bridge", steamId: "2060132685", url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2060132685", required: true, description: "Invisible bridges for rail crossings", source: "steam" },
+  { name: "TFMR 2.0 Bridge", steamId: "2187434173", url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2187434173", required: true, description: "Modern highway bridges", source: "steam" },
+  
+  // ===========================================
+  // RECOMMENDED MODS (from transportfever.net)
+  // ===========================================
+  { name: "Natural Environment Pro 2", steamId: null, url: "https://www.transportfever.net/filebase/entry/5942-natural-environment-professional-2/", required: false, description: "High quality tracks & signals", source: "tfnet" },
+  { name: "Joe Fried Straßenpaket", steamId: null, url: "https://www.transportfever.net/filebase/entry/5264-joe-fried-stra%C3%9Fenpaket-stra%C3%9Fengeschichte/", required: false, description: "Historical road styles", source: "tfnet" },
+  { name: "Autobahnkreuz TpF2", steamId: null, url: "https://www.transportfever.net/filebase/entry/5157-autobahnkreuz-tpf2/", required: false, description: "Motorway interchanges & bridges", source: "tfnet" },
+  { name: "Gleispaket 750mm/1000mm", steamId: null, url: "https://www.transportfever.net/filebase/entry/4808-gleispaket-mit-750mm-1000mm-f%C3%BCr-tpf2/", required: false, description: "Narrow gauge tracks", source: "tfnet" },
+  { name: "Feldbahn Infrastruktur", steamId: null, url: "https://www.transportfever.net/filebase/entry/6512-feldbahn-infrastruktur/", required: false, description: "600mm narrow gauge", source: "tfnet" },
+  
+  // RECOMMENDED MODS (from Steam Workshop)
+  { name: "Angier Bridge Type-1", steamId: "1939805466", url: "https://steamcommunity.com/sharedfiles/filedetails/?id=1939805466", required: false, description: "Concrete bridges", source: "steam" },
+  { name: "Old Track", steamId: "1983390040", url: "https://steamcommunity.com/sharedfiles/filedetails/?id=1983390040", required: false, description: "Disused railway tracks", source: "steam" },
+  { name: "Street Fine Tuning (Lollo)", steamId: "2021038808", url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2021038808", required: false, description: "Narrow paths (1m wide)", source: "steam" },
+  { name: "Freestyle Train Station (Lollo)", steamId: "2363493916", url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2363493916", required: false, description: "Pedestrian bridges", source: "steam" },
+  { name: "Extended Roads Footpaths", steamId: "1968514713", url: "https://steamcommunity.com/sharedfiles/filedetails/?id=1968514713", required: false, description: "Additional footpath styles", source: "steam" },
+  { name: "SMP 2.0", steamId: "1943578742", url: "https://steamcommunity.com/workshop/filedetails/?id=1943578742", required: false, description: "Pedestrian zones, bike lanes", source: "steam" },
+  { name: "Marc's Street and Trampack", steamId: "1933747406", url: "https://steamcommunity.com/sharedfiles/filedetails/?id=1933747406", required: false, description: "Streets with tram tracks", source: "steam" },
+  { name: "Berlin Stadtbahn Viaduct", steamId: "2258619623", url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2258619623", required: false, description: "Third rail (power rail) tracks", source: "steam" },
+  { name: "Ballast", steamId: "2072274420", url: "https://steamcommunity.com/workshop/filedetails/?id=2072274420", required: false, description: "Track ballast textures", source: "steam" },
 ];
 
 /**

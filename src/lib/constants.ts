@@ -89,8 +89,75 @@ export const DEFAULT_CONFIG = {
   includeStreams: true,
   includePaths: false, // Paths disabled by default (performance)
   scaleRatio: 1, // 1:1 scale by default
-  includeHeightmap: false, // Heightmap is optional (requires external API)
+  generateHeightmap: true, // Auto-generate heightmap from elevation data
 };
+
+// Recommended mods for best OSM import experience
+export const RECOMMENDED_MODS = [
+  {
+    name: "Forester",
+    steamId: "2024314376",
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2024314376",
+    description: "Required for placing forests and vegetation",
+    essential: true,
+  },
+  {
+    name: "Paver",
+    steamId: "2024357028",
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2024357028",
+    description: "Required for ground surfaces (plazas, parking lots)",
+    essential: true,
+  },
+  {
+    name: "Vienna Fever: Infrastruktur",
+    steamId: "2060012969",
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2060012969",
+    description: "Track types for tram/metro",
+    essential: true,
+  },
+  {
+    name: "Vienna Fever: Bridge",
+    steamId: "2060132685",
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2060132685",
+    description: "Invisible bridges for realistic rail crossings",
+    essential: true,
+  },
+  {
+    name: "RTP Roads V2",
+    steamId: "2111629477",
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2111629477",
+    description: "Better road types (paths, farm roads)",
+    essential: true,
+  },
+  {
+    name: "TFMR 2.0 Bridge",
+    steamId: "2187434173",
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2187434173",
+    description: "Modern highway bridges",
+    essential: true,
+  },
+  {
+    name: "ETH Schotterbett",
+    steamId: "2149021012",
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2149021012",
+    description: "Ballast track types",
+    essential: false,
+  },
+  {
+    name: "Angier Bridge",
+    steamId: "1939805466",
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=1939805466",
+    description: "Concrete bridges for streets",
+    essential: false,
+  },
+  {
+    name: "Old Track",
+    steamId: "1983390040",
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=1983390040",
+    description: "Disused railway tracks",
+    essential: false,
+  },
+];
 
 // Heightmap sources
 export const HEIGHTMAP_SOURCES = {
