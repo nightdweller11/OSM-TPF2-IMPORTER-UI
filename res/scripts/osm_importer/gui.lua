@@ -1,6 +1,8 @@
 -- OSM Importer GUI
 -- Provides a user-friendly interface with mod detection and options
 
+print("[OSM-GUI] Loading gui.lua module...")
+
 local gui = {}
 
 -- State tracking
@@ -27,6 +29,11 @@ gui.options = {
     build_streets_footway_types = true,
     build_streets_water = true,
     build_streets_airport = true,
+    build_towns = true,
+    build_objects = true,
+    allow_town_development = true,  -- Allow buildings to grow along residential streets
+    use_vanilla_town_streets = false,  -- Use vanilla streets for better town compatibility (default: false - use modded roads)
+    use_way_batching = true,  -- Batch edges by OSM way for better performance (may cause connection issues)
     skip_nodes_outofbounds = true,
     crash_type_not_found = true,
     log_level = 1,
@@ -247,14 +254,14 @@ end
 
 -- Create checkbox for option
 function gui.createOptionCheckbox(container, label, optionKey, description, modName)
-    local row = api.gui.comp.Component.new("HorizontalLayout")
+    local row = api.gui.layout.BoxLayout.new("HORIZONTAL")
     
     local cb = api.gui.comp.CheckBox.new()
     cb:setSelected(gui.options[optionKey] == true)
     cb:onToggle(function(selected)
         gui.options[optionKey] = selected
     end)
-    row:addChild(cb)
+    row:addItem(cb)
     
     -- Check if mod is missing
     local isMissing = false
@@ -279,29 +286,34 @@ function gui.createOptionCheckbox(container, label, optionKey, description, modN
     if description then
         lbl:setTooltip(description .. (modName and ("\nRequires: " .. modName) or ""))
     end
-    row:addChild(lbl)
+    row:addItem(lbl)
     
-    container:addChild(row)
+    container:addItem(row)
     return cb
 end
 
 -- Create the main control window
 function gui.createMainWindow()
+    print("[OSM-GUI] createMainWindow() called")
+    
     if gui.window then
+        print("[OSM-GUI] Window already exists, showing it")
         gui.window:setVisible(true)
         return
     end
     
+    print("[OSM-GUI] Creating new window...")
+    
     -- Detect mods first
     gui.detectMods()
+    print("[OSM-GUI] Mods detected")
     
-    local content = api.gui.comp.Component.new("VerticalLayout")
-    content:setMinimumSize(api.gui.util.Size.new(450, 0))
+    local content = api.gui.layout.BoxLayout.new("VERTICAL")
+    print("[OSM-GUI] Layout created")
     
     -- Title
     local title = api.gui.comp.TextView.new("OSM-TPF2 Importer")
-    title:setStyleClassList({"heading"})
-    content:addChild(title)
+    content:addItem(title)
     
     -- Mod status
     local modStatus = ""
@@ -311,94 +323,84 @@ function gui.createMainWindow()
         modStatus = "✓ All required mods installed"
     end
     gui.modStatusText = api.gui.comp.TextView.new(modStatus)
-    content:addChild(gui.modStatusText)
+    content:addItem(gui.modStatusText)
     
     -- Status indicator
     gui.statusText = api.gui.comp.TextView.new("Ready - Pause the game before starting!")
-    content:addChild(gui.statusText)
+    content:addItem(gui.statusText)
     
     -- Progress bar
     gui.progressBar = api.gui.comp.ProgressBar.new()
     gui.progressBar:setMinimumSize(api.gui.util.Size.new(430, 10))
-    content:addChild(gui.progressBar)
+    content:addItem(gui.progressBar)
     
     -- Step buttons
-    local stepsContainer = api.gui.comp.Component.new("VerticalLayout")
+    local stepsContainer = api.gui.layout.BoxLayout.new("VERTICAL")
     
-    gui.btnInit = api.gui.comp.Button.new()
-    gui.btnInit:setText("Step 0: Initialize OSM Data")
+    gui.btnInit = api.gui.comp.Button.new(api.gui.comp.TextView.new("Step 0: Initialize OSM Data"), true)
     gui.btnInit:onClick(function() gui.runStep0() end)
-    stepsContainer:addChild(gui.btnInit)
+    stepsContainer:addItem(gui.btnInit)
     
-    gui.btnTowns = api.gui.comp.Button.new()
-    gui.btnTowns:setText("Step 1: Create Town Labels")
+    gui.btnTowns = api.gui.comp.Button.new(api.gui.comp.TextView.new("Step 1: Create Town Labels"), true)
     gui.btnTowns:setEnabled(false)
     gui.btnTowns:onClick(function() gui.runStep1() end)
-    stepsContainer:addChild(gui.btnTowns)
+    stepsContainer:addItem(gui.btnTowns)
     
-    gui.btnAreas = api.gui.comp.Button.new()
-    gui.btnAreas:setText("Step 2: Build Forests & Surfaces")
+    gui.btnAreas = api.gui.comp.Button.new(api.gui.comp.TextView.new("Step 2: Build Forests & Surfaces"), true)
     gui.btnAreas:setEnabled(false)
     gui.btnAreas:onClick(function() gui.runStep2() end)
-    stepsContainer:addChild(gui.btnAreas)
+    stepsContainer:addItem(gui.btnAreas)
     
-    gui.btnEdges = api.gui.comp.Button.new()
-    gui.btnEdges:setText("Step 3: Build Streets & Tracks")
+    gui.btnEdges = api.gui.comp.Button.new(api.gui.comp.TextView.new("Step 3: Build Streets & Tracks"), true)
     gui.btnEdges:setEnabled(false)
     gui.btnEdges:onClick(function() gui.runStep3() end)
-    stepsContainer:addChild(gui.btnEdges)
+    stepsContainer:addItem(gui.btnEdges)
     
-    gui.btnObjects = api.gui.comp.Button.new()
-    gui.btnObjects:setText("Step 4: Build Objects")
+    gui.btnObjects = api.gui.comp.Button.new(api.gui.comp.TextView.new("Step 4: Build Objects"), true)
     gui.btnObjects:setEnabled(false)
     gui.btnObjects:onClick(function() gui.runStep4() end)
-    stepsContainer:addChild(gui.btnObjects)
+    stepsContainer:addItem(gui.btnObjects)
     
-    content:addChild(stepsContainer)
+    content:addItem(stepsContainer)
     
     -- Separator
-    local sep = api.gui.comp.Component.new("HorizontalLayout")
-    sep:setMinimumSize(api.gui.util.Size.new(430, 10))
-    content:addChild(sep)
+    content:addItem(api.gui.comp.TextView.new(""))
     
     -- Action buttons row 1
-    local actions1 = api.gui.comp.Component.new("HorizontalLayout")
+    local actions1 = api.gui.layout.BoxLayout.new("HORIZONTAL")
     
-    gui.btnRunAll = api.gui.comp.Button.new()
-    gui.btnRunAll:setText("▶ Run All Steps")
+    gui.btnRunAll = api.gui.comp.Button.new(api.gui.comp.TextView.new("▶ Run All Steps"), true)
     gui.btnRunAll:onClick(function() gui.runAllSteps() end)
-    actions1:addChild(gui.btnRunAll)
+    actions1:addItem(gui.btnRunAll)
     
-    gui.btnStop = api.gui.comp.Button.new()
-    gui.btnStop:setText("■ Stop")
+    gui.btnStop = api.gui.comp.Button.new(api.gui.comp.TextView.new("■ Stop"), true)
     gui.btnStop:setEnabled(false)
     gui.btnStop:onClick(function() gui.stopImport() end)
-    actions1:addChild(gui.btnStop)
+    actions1:addItem(gui.btnStop)
     
-    content:addChild(actions1)
+    content:addItem(actions1)
     
     -- Action buttons row 2
-    local actions2 = api.gui.comp.Component.new("HorizontalLayout")
+    local actions2 = api.gui.layout.BoxLayout.new("HORIZONTAL")
     
-    local btnOptions = api.gui.comp.Button.new()
-    btnOptions:setText("⚙ Options")
+    local btnOptions = api.gui.comp.Button.new(api.gui.comp.TextView.new("⚙ Options"), true)
     btnOptions:onClick(function() gui.showOptionsWindow() end)
-    actions2:addChild(btnOptions)
+    actions2:addItem(btnOptions)
     
-    local btnMods = api.gui.comp.Button.new()
-    btnMods:setText("📦 Mods")
+    local btnMods = api.gui.comp.Button.new(api.gui.comp.TextView.new("📦 Mods"), true)
     btnMods:onClick(function() gui.showModsWindow() end)
-    actions2:addChild(btnMods)
+    actions2:addItem(btnMods)
     
-    local btnLogs = api.gui.comp.Button.new()
-    btnLogs:setText("📋 Logs")
+    local btnLogs = api.gui.comp.Button.new(api.gui.comp.TextView.new("📋 Logs"), true)
     btnLogs:onClick(function() gui.showLogWindow() end)
-    actions2:addChild(btnLogs)
+    actions2:addItem(btnLogs)
     
-    content:addChild(actions2)
+    content:addItem(actions2)
     
+    print("[OSM-GUI] Creating Window...")
     gui.window = api.gui.comp.Window.new("OSM Importer", content)
     gui.window:addHideOnCloseHandler()
+    print("[OSM-GUI] Window created successfully!")
     
     gui.log("OSM Importer GUI ready", LOG_SUCCESS)
     if gui.hasRequiredModsMissing() then
@@ -414,19 +416,17 @@ function gui.showOptionsWindow()
         return
     end
     
-    local content = api.gui.comp.Component.new("VerticalLayout")
-    content:setMinimumSize(api.gui.util.Size.new(400, 0))
+    local content = api.gui.layout.BoxLayout.new("VERTICAL")
     
     local title = api.gui.comp.TextView.new("Import Options")
-    title:setStyleClassList({"heading"})
-    content:addChild(title)
+    content:addItem(title)
     
     local info = api.gui.comp.TextView.new("⚠️ = Mod not installed (option disabled)")
-    content:addChild(info)
+    content:addItem(info)
     
     -- General options section
     local genLabel = api.gui.comp.TextView.new("── General ──")
-    content:addChild(genLabel)
+    content:addItem(genLabel)
     
     gui.createOptionCheckbox(content, "Build Streets", "build_streets", 
         "Build all street types", nil)
@@ -437,9 +437,16 @@ function gui.showOptionsWindow()
     gui.createOptionCheckbox(content, "Build Tunnels", "build_tunnels", 
         "Build tunnels (experimental)", nil)
     
+    -- Performance options section (placed early for visibility)
+    local perfLabel = api.gui.comp.TextView.new("── Performance ──")
+    content:addItem(perfLabel)
+    
+    gui.createOptionCheckbox(content, "Use Way Batching", "use_way_batching", 
+        "Batch edges by OSM way for faster import (disable if roads don't connect)", nil)
+    
     -- Track options section
     local trackLabel = api.gui.comp.TextView.new("── Tracks ──")
-    content:addChild(trackLabel)
+    content:addItem(trackLabel)
     
     gui.createOptionCheckbox(content, "Build Subway/Light Rail", "build_subwaytracks", 
         "Build subway and light rail as tracks", nil)
@@ -450,7 +457,7 @@ function gui.showOptionsWindow()
     
     -- Street options section
     local streetLabel = api.gui.comp.TextView.new("── Streets ──")
-    content:addChild(streetLabel)
+    content:addItem(streetLabel)
     
     gui.createOptionCheckbox(content, "Build Motorways", "build_autobahn", 
         "Build motorways/highways", "Melectro Autobahn")
@@ -463,9 +470,22 @@ function gui.showOptionsWindow()
     gui.createOptionCheckbox(content, "Build Airport Roads", "build_streets_airport", 
         "Build runways and taxiways", "MKH Airport Roads")
     
+    -- Town options section
+    local townLabel = api.gui.comp.TextView.new("── Towns & Buildings ──")
+    content:addItem(townLabel)
+    
+    gui.createOptionCheckbox(content, "Create Towns", "build_towns", 
+        "Create town labels from OSM places", nil)
+    gui.createOptionCheckbox(content, "Allow Town Development", "allow_town_development", 
+        "Let buildings grow along residential streets (requires vanilla street types)", nil)
+    gui.createOptionCheckbox(content, "Use Vanilla Town Streets", "use_vanilla_town_streets", 
+        "Use vanilla town streets with sidewalks (may cause connection issues)", nil)
+    gui.createOptionCheckbox(content, "Build Objects", "build_objects", 
+        "Build decorative objects: trees, fountains, benches, bus stops, shelters, bike racks, street lamps, bollards, trash bins, post boxes", nil)
+    
     -- Other options section
     local otherLabel = api.gui.comp.TextView.new("── Other ──")
-    content:addChild(otherLabel)
+    content:addItem(otherLabel)
     
     gui.createOptionCheckbox(content, "Skip Out-of-Bounds", "skip_nodes_outofbounds", 
         "Skip edges outside map bounds (recommended)", nil)
@@ -473,12 +493,11 @@ function gui.showOptionsWindow()
         "Abort if street/track type not found", nil)
     
     -- Close button
-    local btnClose = api.gui.comp.Button.new()
-    btnClose:setText("Close")
+    local btnClose = api.gui.comp.Button.new(api.gui.comp.TextView.new("Close"), true)
     btnClose:onClick(function()
         gui.optionsWindow:setVisible(false)
     end)
-    content:addChild(btnClose)
+    content:addItem(btnClose)
     
     gui.optionsWindow = api.gui.comp.Window.new("Import Options", content)
     gui.optionsWindow:addHideOnCloseHandler()
@@ -493,16 +512,14 @@ function gui.showModsWindow()
         return
     end
     
-    local content = api.gui.comp.Component.new("VerticalLayout")
-    content:setMinimumSize(api.gui.util.Size.new(500, 0))
+    local content = api.gui.layout.BoxLayout.new("VERTICAL")
     
     local title = api.gui.comp.TextView.new("Required & Optional Mods")
-    title:setStyleClassList({"heading"})
-    content:addChild(title)
+    content:addItem(title)
     
     -- Required mods section
     local reqLabel = api.gui.comp.TextView.new("── Required Mods ──")
-    content:addChild(reqLabel)
+    content:addItem(reqLabel)
     
     for _, mod in ipairs(gui.modDefs) do
         if mod.required then
@@ -518,16 +535,16 @@ function gui.showModsWindow()
             if not installed then
                 row:setTooltip("Download from: " .. mod.url)
             end
-            content:addChild(row)
+            content:addItem(row)
         end
     end
     
     -- Optional mods section
     local optLabel = api.gui.comp.TextView.new("── Optional Mods ──")
-    content:addChild(optLabel)
+    content:addItem(optLabel)
     
     local optInfo = api.gui.comp.TextView.new("These mods enable additional features:")
-    content:addChild(optInfo)
+    content:addItem(optInfo)
     
     for _, mod in ipairs(gui.modDefs) do
         if not mod.required then
@@ -542,28 +559,26 @@ function gui.showModsWindow()
                 status .. " " .. mod.name .. featureText
             )
             row:setTooltip(mod.description .. "\nDownload: " .. mod.url)
-            content:addChild(row)
+            content:addItem(row)
         end
     end
     
     -- Refresh button
-    local btnRefresh = api.gui.comp.Button.new()
-    btnRefresh:setText("🔄 Refresh Detection")
+    local btnRefresh = api.gui.comp.Button.new(api.gui.comp.TextView.new("🔄 Refresh Detection"), true)
     btnRefresh:onClick(function()
         gui.modsWindow:setVisible(false)
         gui.modsWindow = nil
         gui.detectMods()
         gui.showModsWindow()
     end)
-    content:addChild(btnRefresh)
+    content:addItem(btnRefresh)
     
     -- Close button
-    local btnClose = api.gui.comp.Button.new()
-    btnClose:setText("Close")
+    local btnClose = api.gui.comp.Button.new(api.gui.comp.TextView.new("Close"), true)
     btnClose:onClick(function()
         gui.modsWindow:setVisible(false)
     end)
-    content:addChild(btnClose)
+    content:addItem(btnClose)
     
     gui.modsWindow = api.gui.comp.Window.new("Mod Status", content)
     gui.modsWindow:addHideOnCloseHandler()
@@ -576,19 +591,17 @@ function gui.showLogWindow()
         return
     end
     
-    local content = api.gui.comp.Component.new("VerticalLayout")
+    local content = api.gui.layout.BoxLayout.new("VERTICAL")
     
     gui.logText = api.gui.comp.TextView.new(table.concat(gui.logs, "\n"))
-    gui.logText:setMinimumSize(api.gui.util.Size.new(600, 400))
-    content:addChild(gui.logText)
+    content:addItem(gui.logText)
     
-    local btnClear = api.gui.comp.Button.new()
-    btnClear:setText("Clear Logs")
+    local btnClear = api.gui.comp.Button.new(api.gui.comp.TextView.new("Clear Logs"), true)
     btnClear:onClick(function()
         gui.logs = {}
         gui.logText:setText("")
     end)
-    content:addChild(btnClear)
+    content:addItem(btnClear)
     
     gui.logWindow = api.gui.comp.Window.new("OSM Importer Logs", content)
     gui.logWindow:addHideOnCloseHandler()
@@ -790,15 +803,26 @@ end
 
 -- Show the GUI
 function gui.show()
-    gui.createMainWindow()
+    print("[OSM-GUI] gui.show() called")
+    local ok, err = pcall(function()
+        gui.createMainWindow()
+    end)
+    if not ok then
+        print("[OSM-GUI] ERROR in gui.show(): " .. tostring(err))
+    else
+        print("[OSM-GUI] gui.show() completed successfully")
+    end
 end
 
 -- Hide the GUI
 function gui.hide()
+    print("[OSM-GUI] gui.hide() called")
     if gui.window then gui.window:setVisible(false) end
     if gui.optionsWindow then gui.optionsWindow:setVisible(false) end
     if gui.logWindow then gui.logWindow:setVisible(false) end
     if gui.modsWindow then gui.modsWindow:setVisible(false) end
 end
+
+print("[OSM-GUI] gui.lua module loaded successfully")
 
 return gui

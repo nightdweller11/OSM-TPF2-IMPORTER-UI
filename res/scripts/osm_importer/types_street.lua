@@ -5,10 +5,30 @@ local st = {}
 -- VANILLA fallback - always available
 -- Use a basic vanilla street type as fallback
 -- Note: vanilla types use "standard/" prefix or just the filename
-st.fallback_type = "standard/town_small_new.lua"  -- Vanilla small town road with sidewalks
+-- Using country_small (no sidewalks) for better connections
+st.fallback_type = "standard/country_small_new.lua"  -- Vanilla country road without sidewalks
 
 -- For small paths/footways - also vanilla
-st.small_type = "standard/town_verysmall_new.lua"
+st.small_type = "standard/country_small_new.lua"  -- Country road for paths (no sidewalks)
+
+-- VANILLA TOWN STREETS - These work best for town building development
+-- Use these when allow_town_development is enabled
+st.vanilla_town_streets = {
+	small = "standard/town_small_new.lua",       -- 1 lane each way, sidewalks, lamps
+	medium = "standard/town_medium_new.lua",     -- 1 lane each way, wider sidewalks, lamps
+	large = "standard/town_large_new.lua",       -- 2 lanes each way, sidewalks, lamps
+	xlarge = "standard/town_x_large_new.lua",    -- 3 lanes each way, sidewalks, lamps
+	small_ow = "standard/town_small_one_way_new.lua",
+	medium_ow = "standard/town_medium_one_way_new.lua",
+	large_ow = "standard/town_large_one_way_new.lua",
+}
+
+-- Street types that should use vanilla town streets for town development
+st.townDevelopmentTypes = {
+	residential = true,
+	living_street = true,
+	tertiary = true,
+}
 
 -- Mod fallbacks if you have them installed:
 -- st.fallback_type = "01_fusswege/01_fussweg_roter_schotter.lua"
@@ -32,6 +52,31 @@ function st.getType(street,options)
 	if options.build_streets_airport==false and st.osmtypes_airport[street.type] then
 		return
 	end
+	
+	-- TOWN DEVELOPMENT: Use vanilla town streets for residential areas
+	-- This ensures buildings can grow along these streets
+	if options.use_vanilla_town_streets and st.townDevelopmentTypes[street.type] then
+		if street.oneway then
+			local lanes = street.lanes or 1
+			if lanes >= 2 then
+				return st.vanilla_town_streets.large_ow
+			else
+				return st.vanilla_town_streets.small_ow
+			end
+		else
+			local lanes = street.lanes or 2
+			if lanes >= 4 then
+				return st.vanilla_town_streets.xlarge
+			elseif lanes >= 3 then
+				return st.vanilla_town_streets.large
+			elseif lanes >= 2 or street.type == "residential" then
+				return st.vanilla_town_streets.medium  -- Default for residential
+			else
+				return st.vanilla_town_streets.small
+			end
+		end
+	end
+	
 	local type_data = st.types[street.type]
 	if type(type_data)=="table" then
 		if street.lanes==3 and not street.oneway then

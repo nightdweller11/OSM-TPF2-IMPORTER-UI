@@ -3,6 +3,8 @@
 // Standard sizes (up to 16km) are available by default
 // Larger sizes require enabling "Experimental Features" in game settings
 export const MAP_SIZE_PRESETS = [
+  { id: "test_micro", name: "Test (Micro)", width: 512, height: 512, label: "0.5km × 0.5km", requiresExperimental: false },
+  { id: "test_mini", name: "Test (Mini)", width: 1024, height: 1024, label: "1km × 1km", requiresExperimental: false },
   { id: "tiny", name: "Tiny", width: 2048, height: 2048, label: "2km × 2km", requiresExperimental: false },
   { id: "very_small", name: "Very Small", width: 4096, height: 4096, label: "4km × 4km", requiresExperimental: false },
   { id: "small", name: "Small", width: 8192, height: 8192, label: "8km × 8km", requiresExperimental: false },
@@ -90,6 +92,20 @@ export const DEFAULT_CONFIG = {
   includePaths: false, // Paths disabled by default (performance)
   scaleRatio: 1, // 1:1 scale by default
   generateHeightmap: true, // Auto-generate heightmap from elevation data
+  // Decorative objects - all enabled by default
+  includeTrees: true,
+  includeBenches: true,
+  includeBusStops: true,
+  includeShelters: true,
+  includeBikeRacks: true,
+  includeStreetLamps: true,
+  includeBollards: true,
+  includeFountains: true,
+  // Traffic infrastructure - all enabled by default
+  includeTrafficLights: true,
+  includeStopSigns: true,
+  includeYieldSigns: true,
+  includeCrossings: true,
 };
 
 // Recommended mods for best OSM import experience

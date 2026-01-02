@@ -68,11 +68,13 @@ function tc.initialize()
 end
 
 -- Find street fallback
+-- Prefer country roads (no sidewalks) over town roads for better connections
 function tc.findStreetFallback()
     local vanillaNames = {
-        "standard/country_small_new.lua",
-        "standard/town_small_new.lua",
+        "standard/country_small_new.lua",  -- Priority: country road without sidewalks
+        "standard/country_medium_new.lua",
         "country_small_new.lua",
+        "standard/town_small_new.lua",  -- Town roads have sidewalks (less preferred)
         "town_small_new.lua",
     }
     for _, name in ipairs(vanillaNames) do

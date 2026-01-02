@@ -360,15 +360,65 @@ function s.Node(id,node)
 	return n
 end
 
+-- Street types that should allow town building development
+-- These are streets where we want buildings to grow along them
+s.townDevelopmentStreetTypes = {
+	residential = true,
+	living_street = true,
+	tertiary = true,
+	secondary = true,
+	primary = true,
+	unclassified = true,
+}
+
+-- Check if a street type should allow town development
+function s.allowsTownDevelopment(street, options)
+	if not options or not options.allow_town_development then
+		return false  -- Disabled by option
+	end
+	if not street or not street.type then
+		return false
+	end
+	-- Only allow town development on urban street types
+	if s.townDevelopmentStreetTypes[street.type] then
+		-- Residential and living_street ALWAYS count as urban - these are where buildings grow
+		if street.type == "residential" or street.type == "living_street" then
+			return true
+		end
+		-- For other street types, check if explicitly marked as urban (country ~= true)
+		-- Note: country = nil or country = false both mean "urban" (not explicitly rural)
+		if street.country ~= true then
+			return true
+		end
+	end
+	return false
+end
+
 function s.Edge(id,edge,getNodeEntity,getNodePos)
 	local e = api.type.SegmentAndEntity.new()
 	assert(id<0)
 	e.entity = id or -1
 	assert(e.entity<0)
 	
-	local playerOwnedComponent = api.type.PlayerOwned.new()
-	playerOwnedComponent.player = game.interface.getPlayer()
-	e.playerOwned = playerOwnedComponent  -- lock streets to prevent automatic town development
+	-- TOWN DEVELOPMENT FIX:
+	-- Only set playerOwned on streets where we DON'T want buildings to grow
+	-- For residential/urban streets, leave playerOwned nil so towns can develop
+	local shouldLockStreet = true
+	local allowsTownDev = edge.street and s.allowsTownDevelopment(edge.street, options())
+	if allowsTownDev then
+		shouldLockStreet = false  -- Allow town development
+		-- Debug logging at level 3
+		if s.cbLevel and s.cbLevel >= 3 then
+			print("[OSM Importer] Town development enabled for street type: " .. tostring(edge.street and edge.street.type))
+		end
+	end
+	
+	if shouldLockStreet then
+		local playerOwnedComponent = api.type.PlayerOwned.new()
+		playerOwnedComponent.player = game.interface.getPlayer()
+		e.playerOwned = playerOwnedComponent  -- Lock street - no town development
+	end
+	-- else: leave e.playerOwned nil - allows town to build along this street
 	
 	e.comp.node0 = getNodeEntity( assert(edge.node0, "No node0 for entity: "..id))
 	e.comp.node1 = getNodeEntity( assert(edge.node1, "No node1 for entity: "..id))

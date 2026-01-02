@@ -6,19 +6,23 @@ This document lists OSM features that could potentially be imported into Transpo
 
 | OSM Tag | Object Type | TPF2 Asset | Status |
 |---------|-------------|------------|--------|
-| `natural=tree` | tree | `tree/shingle_oak.mdl` | ✅ Working |
-| `amenity=fountain` | fountain | `asset/ground/fountain_1.mdl` | ✅ Working |
+| `natural=tree` | tree | `tree/shingle_oak.mdl` + variations | ✅ Working (vanilla) |
+| `natural=tree` + conifer | tree_conifer | `tree/norway_spruce.mdl` + variations | ✅ Working (vanilla) |
+| `amenity=fountain` | fountain | `asset/ground/fountain_1.mdl` | ✅ Working (vanilla) |
 | `barrier=bollard` | bollard | `asset/connum_poller_gehweg_rund_1.mdl` | ✅ Needs mod |
 | `advertising=column` | litfass | `asset/sab_LitV2_3.mdl` | ✅ Needs mod |
+| `amenity=bench` | bench | `asset/bench_1.mdl` | ✅ Needs mod |
+| `highway=bus_stop` | bus_stop | `asset/bus_stop_sign.mdl` | ✅ Needs mod |
+| `amenity=shelter` | shelter | `asset/shelter_modern.mdl` | ✅ Needs mod |
+| `amenity=bicycle_parking` | bike_rack | `asset/bike_rack_1.mdl` | ✅ Needs mod |
+| `highway=street_lamp` | street_lamp | `asset/street_lamp_modern.mdl` | ✅ Needs mod |
+| `amenity=waste_basket` | trash_bin | `asset/trash_bin_1.mdl` | ✅ Needs mod |
+| `amenity=post_box` | post_box | `asset/post_box_1.mdl` | ✅ Needs mod |
 
 ## Potential Additions - Street Furniture
 
 | OSM Tag | Object Type | Suggested TPF2 Asset | Priority |
 |---------|-------------|---------------------|----------|
-| `amenity=bench` | bench | `asset/bench_*.mdl` | High |
-| `highway=street_lamp` | streetlamp | `asset/street_lamp_*.mdl` | High |
-| `amenity=waste_basket` | trash_bin | `asset/trash_bin_*.mdl` | Medium |
-| `amenity=post_box` | postbox | `asset/post_box_*.mdl` | Low |
 | `amenity=telephone` | phone_booth | `asset/phone_booth_*.mdl` | Low |
 | `amenity=vending_machine` | vending | `asset/vending_*.mdl` | Low |
 | `tourism=information` | info_board | `asset/info_board_*.mdl` | Low |
@@ -27,22 +31,25 @@ This document lists OSM features that could potentially be imported into Transpo
 
 | OSM Tag | Object Type | Suggested TPF2 Asset | Priority |
 |---------|-------------|---------------------|----------|
-| `highway=bus_stop` | bus_stop | `asset/bus_stop_sign_*.mdl` | High |
-| `amenity=shelter` | shelter | `asset/shelter_*.mdl` | High |
 | `railway=platform` | platform | Construction | Medium |
 | `railway=station` | station | Construction | Low (complex) |
-| `amenity=bicycle_parking` | bike_rack | `asset/bike_rack_*.mdl` | Medium |
 | `amenity=parking` | parking_lot | Paver ground texture | Medium |
 
 ## Potential Additions - Traffic Infrastructure
 
 | OSM Tag | Object Type | Suggested TPF2 Asset | Priority |
 |---------|-------------|---------------------|----------|
-| `highway=traffic_signals` | traffic_light | Part of street types | Medium |
-| `highway=crossing` | crosswalk | Paver ground texture | Medium |
-| `traffic_calming=bump` | speed_bump | Ground decal | Low |
-| `highway=stop` | stop_sign | `asset/stop_sign_*.mdl` | Medium |
-| `highway=give_way` | yield_sign | `asset/yield_sign_*.mdl` | Low |
+| `highway=traffic_signals` | traffic_light | `asset/traffic_light_1.mdl` | ✅ Working (needs mod) |
+| `highway=crossing` | crossing | `asset/crossing_sign_1.mdl` | ✅ Working (needs mod) |
+| `highway=stop` | stop_sign | `asset/stop_sign_1.mdl` | ✅ Working (needs mod) |
+| `highway=give_way` | yield_sign | `asset/yield_sign_1.mdl` | ✅ Working (needs mod) |
+| `highway=traffic_mirror` | traffic_mirror | `asset/traffic_mirror_1.mdl` | ✅ Working (needs mod) |
+| `highway=speed_camera` | speed_camera | `asset/speed_camera_1.mdl` | ✅ Working (needs mod) |
+| `emergency=fire_hydrant` | fire_hydrant | `asset/fire_hydrant_1.mdl` | ✅ Working (needs mod) |
+| `amenity=telephone` | phone_booth | `asset/phone_booth_1.mdl` | ✅ Working (needs mod) |
+| `amenity=clock` | clock | `asset/clock_1.mdl` | ✅ Working (needs mod) |
+| `man_made=flagpole` | flagpole | `asset/flagpole_1.mdl` | ✅ Working (needs mod) |
+| `traffic_calming=bump` | speed_bump | Ground decal | Low (not implemented) |
 
 ## Potential Additions - Decorative
 

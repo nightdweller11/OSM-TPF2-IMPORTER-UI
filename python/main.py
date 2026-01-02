@@ -320,13 +320,31 @@ if HEIGHTMAP_FILE:
 #################################################
 
 # Calculate final stats
+detailed = data.get('detailed_stats', {})
+
 final_stats = {
     "towns": len(data['towns']),
     "nodes": len(data['nodes']),
     "edges": len(data['edges']),
     "areas": sum(len(area) for area in data['areas'].values()),
     "objects": len(data['objects']),
-    "output_size_mb": round(output_size_mb, 1)
+    "output_size_mb": round(output_size_mb, 1),
+    # Detailed inventory
+    "inventory": {
+        "streets": detailed.get("streets", {}),
+        "tracks": detailed.get("tracks", {}),
+        "objects": detailed.get("objects", {}),
+        "places": detailed.get("places", {}),
+        "areas": {
+            "forests": detailed.get("areas", {}).get("forests", 0),
+            "shrubs": detailed.get("areas", {}).get("shrubs", 0),
+            "grounds": detailed.get("areas", {}).get("grounds", {}),
+        },
+        "signals": detailed.get("signals", 0),
+        "bridges": detailed.get("bridges", 0),
+        "tunnels": detailed.get("tunnels", 0),
+        "streams": detailed.get("streams", 0),
+    }
 }
 
 log(f"Successfully converted OSM data to: '{OUTFILE}'")

@@ -8,7 +8,15 @@ local s = {}
 
 -- Configuration
 s.LOG_INTERVAL = 100  -- Log progress every N ways
-s.USE_WAY_BATCHING = true  -- Process entire ways in one API call
+s.MAX_BATCH_SIZE = 20  -- Maximum edges per batch to prevent crashes
+
+-- Helper to get batching option (can be overridden by options)
+function s.useBatching(options)
+	if options and options.use_way_batching ~= nil then
+		return options.use_way_batching
+	end
+	return true  -- Default to batching enabled
+end
 
 -- Node entity cache: node_id -> entity_id (or false if not found)
 s.nodeCache = {}
@@ -69,8 +77,12 @@ function s.SimpleProposalSeq(data, options)
 	s.placed = 0  -- Successfully placed edges
 	s.edgesProcessed = 0  -- Edges sent to API
 	
+	-- Determine batching mode from options
+	s.batchingEnabled = s.useBatching(options)
+	print("[Optimizer] Way batching: " .. (s.batchingEnabled and "ENABLED" or "DISABLED"))
+	
 	-- Group edges by way for batching
-	if s.USE_WAY_BATCHING then
+	if s.batchingEnabled then
 		print("[Optimizer] Grouping edges by way for batch processing...")
 		local wayGroups = {}  -- way_id -> list of edges
 		local wayOrder = {}   -- ordered list of way_ids
@@ -122,7 +134,7 @@ function s.SimpleProposalSeq(data, options)
 	
 	s.pb = s.progressWindow()
 	
-	if s.USE_WAY_BATCHING then
+	if s.batchingEnabled then
 		s.SimpleProposalSeqWay()
 	else
 		s.SimpleProposalSeqE()
@@ -171,9 +183,45 @@ function s.SimpleProposalSeqWay()
 end
 
 -- Process a complete way (multiple edges) in one API call
+-- Splits large ways into smaller batches to prevent crashes
 function s.SimpleProposalSeqWayCmd(wayData, cbLevel)
 	local edges = wayData.edges
 	local wayId = wayData.wayId
+	
+	-- Split large ways into smaller batches
+	if #edges > s.MAX_BATCH_SIZE then
+		-- Split into smaller chunks and process the first chunk now
+		-- The rest will be added back to the front of wayList
+		local remainingChunks = {}
+		for i = s.MAX_BATCH_SIZE + 1, #edges, s.MAX_BATCH_SIZE do
+			local chunk = {}
+			for j = i, math.min(i + s.MAX_BATCH_SIZE - 1, #edges) do
+				table.insert(chunk, edges[j])
+			end
+			table.insert(remainingChunks, {
+				wayId = wayId .. "_chunk" .. math.ceil(i / s.MAX_BATCH_SIZE),
+				edges = chunk
+			})
+		end
+		
+		-- Add remaining chunks back to front of list
+		for i = #remainingChunks, 1, -1 do
+			table.insert(s.wayList, 1, remainingChunks[i])
+			s.nseq = s.nseq + 1
+		end
+		
+		-- Trim current batch to max size
+		local trimmedEdges = {}
+		for i = 1, s.MAX_BATCH_SIZE do
+			table.insert(trimmedEdges, edges[i])
+		end
+		edges = trimmedEdges
+		
+		if cbLevel >= 2 then
+			print(string.format("[Batch] Split way %s: processing %d edges, %d chunks remaining", 
+				wayId, #edges, #remainingChunks))
+		end
+	end
 	
 	-- Collect all unique nodes for this way
 	local nodes = {}
@@ -204,24 +252,40 @@ function s.SimpleProposalSeqWayCmd(wayData, cbLevel)
 	
 	s.edgesProcessed = s.edgesProcessed + #edges
 	
-	simpleproposal.SimpleProposalCmd(d2, context, ignoreErrors, cbLevel, function(res, success)
-		-- Count results
+	-- Wrap in pcall to catch any Lua errors
+	local ok, err = pcall(function()
+		simpleproposal.SimpleProposalCmd(d2, context, ignoreErrors, cbLevel, function(res, success)
+			-- Count results
+			for _, edge in ipairs(edges) do
+				local etype = edge.track and "TRACK" or edge.street and "STREET"
+				s.nedges[etype] = s.nedges[etype] + 1
+				if success then
+					s.placed = s.placed + 1
+					-- Invalidate cache for these nodes so they can be found as entities next time
+					s.nodeCache[edge.node0] = nil
+					s.nodeCache[edge.node1] = nil
+				else
+					s.nosuc[etype] = s.nosuc[etype] + 1
+				end
+			end
+			
+			-- Continue to next way
+			s.SimpleProposalSeqWay()
+		end, true)  -- retryWSmStreet
+	end)
+	
+	if not ok then
+		print("[ERROR] Batch failed with error: " .. tostring(err))
+		print("[ERROR] Skipping way " .. wayId .. " (" .. #edges .. " edges)")
+		-- Mark edges as failed and continue
 		for _, edge in ipairs(edges) do
 			local etype = edge.track and "TRACK" or edge.street and "STREET"
 			s.nedges[etype] = s.nedges[etype] + 1
-			if success then
-				s.placed = s.placed + 1
-				-- Invalidate cache for these nodes so they can be found as entities next time
-				s.nodeCache[edge.node0] = nil
-				s.nodeCache[edge.node1] = nil
-			else
-				s.nosuc[etype] = s.nosuc[etype] + 1
-			end
+			s.nosuc[etype] = s.nosuc[etype] + 1
 		end
-		
 		-- Continue to next way
 		s.SimpleProposalSeqWay()
-	end, true)  -- retryWSmStreet
+	end
 end
 
 -- Helper to count table entries
@@ -322,20 +386,31 @@ end
 -- Update node cache after successful edge creation
 function s.updateNodeCacheFromResult(res, edge)
 	-- After an edge is created, the nodes now exist as entities
-	-- We need to update our cache so subsequent edges can connect
-	if res and res.resultProposalData then
-		-- Try to extract created node entities
-		-- This is best-effort; the exact API depends on TPF2 version
+	-- We need to update our cache so subsequent edges can connect to them
+	
+	-- Try to find the actual entity IDs for these nodes now that they exist
+	local function findAndCacheNode(nodeId)
+		local nodeData = s.data.nodes[nodeId]
+		if not nodeData or not nodeData.pos then return end
+		
+		local pos = nodeData.pos
+		local ents = game.interface.getEntities({pos = pos, radius = 5}, {type = "BASE_NODE"})
+		local foundId = tools.getNearestNode(pos, ents, 1.0)
+		
+		if foundId then
+			s.nodeCache[nodeId] = foundId
+			if s.cbLevel >= 3 then
+				print(string.format("[Cache] Node %s -> entity %d", tostring(nodeId), foundId))
+			end
+		else
+			-- Node was created but we can't find it - clear cache so next lookup retries
+			s.nodeCache[nodeId] = nil
+		end
 	end
 	
-	-- Alternative: invalidate cache entries so next lookup finds the new entity
-	-- This ensures fresh lookups for nodes that were just created
-	if s.nodeCache[edge.node0] == false then
-		s.nodeCache[edge.node0] = nil  -- Clear "not found" so it gets re-checked
-	end
-	if s.nodeCache[edge.node1] == false then
-		s.nodeCache[edge.node1] = nil
-	end
+	-- Find and cache both nodes from the edge
+	findAndCacheNode(edge.node0)
+	findAndCacheNode(edge.node1)
 end
 
 -- Replace node with cached entity lookup
@@ -379,14 +454,16 @@ function s.getIdIfExist(node)
 		return nil
 	end
 	local pos = nodeData.pos
-	local ents = game.interface.getEntities({pos = pos, radius = 3}, {type = "BASE_NODE"})
-	return tools.getNearestNode(pos, ents, 1e-3)
+	-- Search radius 5m, accept nodes within 1m for reliable connections
+	-- Too strict tolerance (like 1mm) causes nodes to not be found
+	local ents = game.interface.getEntities({pos = pos, radius = 5}, {type = "BASE_NODE"})
+	return tools.getNearestNode(pos, ents, 1.0)  -- Accept nodes within 1 meter
 end
 
 function s.finishImport()
 	print("-------------------------------------------------------------")
 	local aborted = false
-	if s.USE_WAY_BATCHING then
+	if s.batchingEnabled then
 		if #s.wayList ~= 0 then
 			print("Process aborted!")
 			print(string.format("Remaining Ways: %d", #s.wayList))
@@ -401,7 +478,7 @@ function s.finishImport()
 	end
 	
 	if not aborted then
-		if s.USE_WAY_BATCHING then
+		if s.batchingEnabled then
 			print("Finished SimpleProposalCmdSeq (WAY BATCHING)")
 		else
 			print("Finished SimpleProposalCmdSeq (SEQUENTIAL)")
@@ -418,7 +495,7 @@ function s.finishImport()
 		totalEdges, s.placed, 100 * s.placed / math.max(1, totalEdges)))
 	print(string.format("Average rate: %.1f edges/sec", avgEdgeRate))
 	
-	if s.USE_WAY_BATCHING and s.nways then
+	if s.batchingEnabled and s.nways then
 		local avgWayRate = s.count / math.max(1, timedur)
 		print(string.format("Way batching: %d ways in %.0f sec (%.1f ways/sec)", 
 			s.count, timedur, avgWayRate))
@@ -454,7 +531,7 @@ end
 function s.progressWindow()
 	local pb = api.gui.comp.ProgressBar.new()
 	local title
-	if s.USE_WAY_BATCHING then
+	if s.batchingEnabled then
 		title = string.format("OSM Import: %d edges in %d ways", s.totalEdges, s.nways)
 	else
 		title = string.format("OSM Import: %d edges", s.totalEdges)

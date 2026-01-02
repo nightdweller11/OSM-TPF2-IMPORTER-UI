@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MAP_SIZE_PRESETS, RAIL_TYPES, HIGHWAY_TYPES, SCALE_RATIOS, EXPERIMENTAL_MAP_INSTRUCTIONS, HEIGHTMAP_INSTRUCTIONS } from "@/lib/constants";
-import { Train, Car, TreePine, Building, Signpost, Scaling, AlertTriangle, Info, ChevronDown, ChevronUp, Mountain, ExternalLink } from "lucide-react";
+import { Train, Car, TreePine, Building, Signpost, Scaling, AlertTriangle, Info, ChevronDown, ChevronUp, Mountain, ExternalLink, Armchair, Bus, Umbrella, Bike, Lamp, CircleDot, Droplets, OctagonX, TriangleAlert, Cone } from "lucide-react";
 import { useState } from "react";
 
 export interface ConversionConfig {
@@ -29,6 +29,20 @@ export interface ConversionConfig {
   includeStreams: boolean;
   includePaths: boolean;
   generateHeightmap: boolean;  // Auto-generate heightmap from elevation data
+  // Decorative objects
+  includeTrees: boolean;
+  includeBenches: boolean;
+  includeBusStops: boolean;
+  includeShelters: boolean;
+  includeBikeRacks: boolean;
+  includeStreetLamps: boolean;
+  includeBollards: boolean;
+  includeFountains: boolean;
+  // Traffic infrastructure
+  includeTrafficLights: boolean;
+  includeStopSigns: boolean;
+  includeYieldSigns: boolean;
+  includeCrossings: boolean;
 }
 
 interface ConfigPanelProps {
@@ -157,6 +171,7 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
               </div>
               
               <button
+                type="button"
                 onClick={() => setShowExperimentalInfo(!showExperimentalInfo)}
                 className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline"
               >
@@ -252,6 +267,7 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
           </div>
           
           <button
+            type="button"
             onClick={() => setShowHeightmapInfo(!showHeightmapInfo)}
             className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
           >
@@ -303,6 +319,7 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             </CardTitle>
             <div className="flex gap-2 text-xs">
               <button
+                type="button"
                 onClick={() => toggleAll("rail", true)}
                 className="text-primary hover:underline"
               >
@@ -310,6 +327,7 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
               </button>
               <span className="text-muted-foreground">/</span>
               <button
+                type="button"
                 onClick={() => toggleAll("rail", false)}
                 className="text-primary hover:underline"
               >
@@ -349,6 +367,7 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             </CardTitle>
             <div className="flex gap-2 text-xs">
               <button
+                type="button"
                 onClick={() => toggleAll("highway", true)}
                 className="text-primary hover:underline"
               >
@@ -356,6 +375,7 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
               </button>
               <span className="text-muted-foreground">/</span>
               <button
+                type="button"
                 onClick={() => toggleAll("highway", false)}
                 className="text-primary hover:underline"
               >
@@ -417,12 +437,12 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
         </CardContent>
       </Card>
 
-      {/* Other Options */}
+      {/* Areas & Environment */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <TreePine className="h-4 w-4" />
-            Additional Data
+            Areas & Environment
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -448,19 +468,20 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
                 }
               />
               <Label htmlFor="grounds" className="text-sm font-normal cursor-pointer">
-                Ground surfaces
+                Ground Surfaces
               </Label>
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="objects"
-                checked={config.includeObjects}
+                id="streams"
+                checked={config.includeStreams}
                 onCheckedChange={(checked) =>
-                  onChange({ ...config, includeObjects: checked === true })
+                  onChange({ ...config, includeStreams: checked === true })
                 }
               />
-              <Label htmlFor="objects" className="text-sm font-normal cursor-pointer">
-                Objects (trees, etc.)
+              <Label htmlFor="streams" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                <Droplets className="h-3 w-3" />
+                Streams/Rivers
               </Label>
             </div>
             <div className="flex items-center space-x-2">
@@ -471,8 +492,9 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
                   onChange({ ...config, includeTowns: checked === true })
                 }
               />
-              <Label htmlFor="towns" className="text-sm font-normal cursor-pointer">
-                Town labels
+              <Label htmlFor="towns" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                <Building className="h-3 w-3" />
+                Town Labels
               </Label>
             </div>
             <div className="flex items-center space-x-2">
@@ -485,22 +507,244 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
               />
               <Label htmlFor="signals" className="text-sm font-normal cursor-pointer flex items-center gap-1">
                 <Signpost className="h-3 w-3" />
-                Signals
+                Railway Signals
+              </Label>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Decorative Objects */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Armchair className="h-4 w-4" />
+              Decorative Objects
+            </CardTitle>
+            <div className="flex gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => onChange({
+                  ...config,
+                  includeObjects: true,
+                  includeTrees: true,
+                  includeBenches: true,
+                  includeBusStops: true,
+                  includeShelters: true,
+                  includeBikeRacks: true,
+                  includeStreetLamps: true,
+                  includeBollards: true,
+                  includeFountains: true,
+                  includeTrafficLights: true,
+                  includeStopSigns: true,
+                  includeYieldSigns: true,
+                  includeCrossings: true,
+                })}
+                className="text-primary hover:underline"
+              >
+                All
+              </button>
+              <span className="text-muted-foreground">/</span>
+              <button
+                type="button"
+                onClick={() => onChange({
+                  ...config,
+                  includeObjects: false,
+                  includeTrees: false,
+                  includeBenches: false,
+                  includeBusStops: false,
+                  includeShelters: false,
+                  includeBikeRacks: false,
+                  includeStreetLamps: false,
+                  includeBollards: false,
+                  includeFountains: false,
+                  includeTrafficLights: false,
+                  includeStopSigns: false,
+                  includeYieldSigns: false,
+                  includeCrossings: false,
+                })}
+                className="text-primary hover:underline"
+              >
+                None
+              </button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="trees"
+                checked={config.includeTrees}
+                onCheckedChange={(checked) =>
+                  onChange({ ...config, includeTrees: checked === true })
+                }
+              />
+              <Label htmlFor="trees" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                <TreePine className="h-3 w-3" />
+                Trees
               </Label>
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox
-                id="streams"
-                checked={config.includeStreams}
+                id="fountains"
+                checked={config.includeFountains}
                 onCheckedChange={(checked) =>
-                  onChange({ ...config, includeStreams: checked === true })
+                  onChange({ ...config, includeFountains: checked === true })
                 }
               />
-              <Label htmlFor="streams" className="text-sm font-normal cursor-pointer">
-                Streams/Rivers
+              <Label htmlFor="fountains" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                <Droplets className="h-3 w-3" />
+                Fountains
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="benches"
+                checked={config.includeBenches}
+                onCheckedChange={(checked) =>
+                  onChange({ ...config, includeBenches: checked === true })
+                }
+              />
+              <Label htmlFor="benches" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                <Armchair className="h-3 w-3" />
+                Benches
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="busStops"
+                checked={config.includeBusStops}
+                onCheckedChange={(checked) =>
+                  onChange({ ...config, includeBusStops: checked === true })
+                }
+              />
+              <Label htmlFor="busStops" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                <Bus className="h-3 w-3" />
+                Bus Stops
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="shelters"
+                checked={config.includeShelters}
+                onCheckedChange={(checked) =>
+                  onChange({ ...config, includeShelters: checked === true })
+                }
+              />
+              <Label htmlFor="shelters" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                <Umbrella className="h-3 w-3" />
+                Transit Shelters
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="bikeRacks"
+                checked={config.includeBikeRacks}
+                onCheckedChange={(checked) =>
+                  onChange({ ...config, includeBikeRacks: checked === true })
+                }
+              />
+              <Label htmlFor="bikeRacks" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                <Bike className="h-3 w-3" />
+                Bike Racks
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="streetLamps"
+                checked={config.includeStreetLamps}
+                onCheckedChange={(checked) =>
+                  onChange({ ...config, includeStreetLamps: checked === true })
+                }
+              />
+              <Label htmlFor="streetLamps" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                <Lamp className="h-3 w-3" />
+                Street Lamps
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="bollards"
+                checked={config.includeBollards}
+                onCheckedChange={(checked) =>
+                  onChange({ ...config, includeBollards: checked === true })
+                }
+              />
+              <Label htmlFor="bollards" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                <CircleDot className="h-3 w-3" />
+                Bollards
               </Label>
             </div>
           </div>
+          
+          {/* Traffic Infrastructure subsection */}
+          <div className="border-t pt-3 mt-3">
+            <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+              <Signpost className="h-3 w-3" />
+              Traffic Infrastructure
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="trafficLights"
+                  checked={config.includeTrafficLights}
+                  onCheckedChange={(checked) =>
+                    onChange({ ...config, includeTrafficLights: checked === true })
+                  }
+                />
+                <Label htmlFor="trafficLights" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                  <Cone className="h-3 w-3" />
+                  Traffic Lights
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="stopSigns"
+                  checked={config.includeStopSigns}
+                  onCheckedChange={(checked) =>
+                    onChange({ ...config, includeStopSigns: checked === true })
+                  }
+                />
+                <Label htmlFor="stopSigns" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                  <OctagonX className="h-3 w-3" />
+                  Stop Signs
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="yieldSigns"
+                  checked={config.includeYieldSigns}
+                  onCheckedChange={(checked) =>
+                    onChange({ ...config, includeYieldSigns: checked === true })
+                  }
+                />
+                <Label htmlFor="yieldSigns" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                  <TriangleAlert className="h-3 w-3" />
+                  Yield Signs
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="crossings"
+                  checked={config.includeCrossings}
+                  onCheckedChange={(checked) =>
+                    onChange({ ...config, includeCrossings: checked === true })
+                  }
+                />
+                <Label htmlFor="crossings" className="text-sm font-normal cursor-pointer flex items-center gap-1">
+                  <Signpost className="h-3 w-3" />
+                  Crossings
+                </Label>
+              </div>
+            </div>
+          </div>
+          
+          <p className="text-xs text-muted-foreground mt-3">
+            Some objects require additional mods to be installed in TPF2.
+            Missing objects will be skipped during import.
+          </p>
         </CardContent>
       </Card>
     </div>

@@ -27,6 +27,8 @@ import {
   Download,
   ChevronDown,
   ChevronUp,
+  Building2,
+  TreePine,
 } from "lucide-react";
 
 interface ImportOptionsPanelProps {
@@ -76,6 +78,7 @@ export function ImportOptionsPanel({
     general: IMPORT_OPTIONS_META.filter((m) => m.category === "general"),
     tracks: IMPORT_OPTIONS_META.filter((m) => m.category === "tracks"),
     streets: IMPORT_OPTIONS_META.filter((m) => m.category === "streets"),
+    towns: IMPORT_OPTIONS_META.filter((m) => m.category === "towns"),
     other: IMPORT_OPTIONS_META.filter((m) => m.category === "other"),
   };
 
@@ -188,6 +191,38 @@ export function ImportOptionsPanel({
                       handleOptionChange(meta.key, checked === true)
                     }
                     disabled={!options.build_streets}
+                  />
+                  <div className="grid gap-0.5 leading-none">
+                    <Label
+                      htmlFor={meta.key}
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      {meta.label}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {meta.description}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Towns & Buildings Options */}
+          <div>
+            <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Towns & Buildings
+            </h4>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {categorizedOptions.towns.map((meta) => (
+                <div key={meta.key} className="flex items-start space-x-2">
+                  <Checkbox
+                    id={meta.key}
+                    checked={options[meta.key] as boolean}
+                    onCheckedChange={(checked) =>
+                      handleOptionChange(meta.key, checked === true)
+                    }
                   />
                   <div className="grid gap-0.5 leading-none">
                     <Label

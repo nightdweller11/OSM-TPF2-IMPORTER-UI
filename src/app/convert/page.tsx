@@ -120,6 +120,20 @@ export default function ConvertPage() {
             includeSignals: config.includeSignals,
             includeStreams: config.includeStreams,
             includePaths: config.includePaths,
+            // Decorative object options
+            includeTrees: config.includeTrees,
+            includeBenches: config.includeBenches,
+            includeBusStops: config.includeBusStops,
+            includeShelters: config.includeShelters,
+            includeBikeRacks: config.includeBikeRacks,
+            includeStreetLamps: config.includeStreetLamps,
+            includeBollards: config.includeBollards,
+            includeFountains: config.includeFountains,
+            // Traffic infrastructure options
+            includeTrafficLights: config.includeTrafficLights,
+            includeStopSigns: config.includeStopSigns,
+            includeYieldSigns: config.includeYieldSigns,
+            includeCrossings: config.includeCrossings,
           },
         }),
       });

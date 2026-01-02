@@ -5,6 +5,7 @@ import { fetchOsmData, calculateBoundsFromCenter } from "@/lib/osm-fetcher";
 import { getPythonRunner, initConversionLogs, pushConversionLog } from "@/lib/python-runner";
 import { eq, desc, and, sql } from "drizzle-orm";
 import path from "path";
+import fs from "fs/promises";
 import { z } from "zod";
 
 // Check if dev mode (no OAuth configured)
@@ -17,8 +18,8 @@ const createConversionSchema = z.object({
   description: z.string().optional(),
   centerLat: z.number().min(-90).max(90),
   centerLon: z.number().min(-180).max(180),
-  mapWidth: z.number().min(2048).max(53760),
-  mapHeight: z.number().min(2048).max(53760),
+  mapWidth: z.number().min(256).max(53760),   // Allow small test sizes
+  mapHeight: z.number().min(256).max(53760),  // Allow small test sizes
   mapPreset: z.string().optional(),
   config: z.object({
     railTypes: z.array(z.string()).optional(),

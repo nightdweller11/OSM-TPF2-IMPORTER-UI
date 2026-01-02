@@ -150,6 +150,11 @@ function osm_importer.run(userOptions)
 		build_streets_footway_types = true,
 		build_streets_water = true,
 		build_streets_airport = true,
+		build_towns = true,
+		build_objects = true,
+		allow_town_development = true,      -- Allow buildings to grow along residential streets
+		use_vanilla_town_streets = false,   -- Use modded streets by default (better connections)
+		use_way_batching = true,            -- Batch edges by OSM way for better performance
 		skip_nodes_outofbounds = true,
 		crash_type_not_found = false,
 		log_level = 1,
@@ -263,16 +268,27 @@ function osm_importer.run(userOptions)
 	end
 	
 	-- (4) Build objects - LAST because terrain heights change
-	if osmdata.objects and #osmdata.objects > 0 then
-		safeCall("Step 4: Building objects (" .. #osmdata.objects .. " objects)", function()
-			osm_importer.models.buildObjects(osmdata.objects)
-		end, "Objects skipped - models may be missing")
+	if options.build_objects then
+		if osmdata.objects and #osmdata.objects > 0 then
+			safeCall("Step 4: Building objects (" .. #osmdata.objects .. " objects)", function()
+				osm_importer.models.buildObjects(osmdata.objects)
+			end, "Objects skipped - models may be missing")
+		else
+			print("[OSM Importer] Step 4: No objects in data, skipping")
+		end
 	else
-		print("[OSM Importer] Step 4: No objects in data, skipping")
+		print("[OSM Importer] Step 4: Objects disabled in options, skipping")
 	end
 	
 	print("[OSM Importer] ========================================")
 	print("[OSM Importer] Import complete!")
+	print("[OSM Importer] ")
+	if options.allow_town_development then
+		print("[OSM Importer] TOWN DEVELOPMENT: Enabled for residential streets")
+		print("[OSM Importer] Buildings should now grow along residential roads!")
+		print("[OSM Importer] Make sure you have towns created near your streets.")
+	end
+	print("[OSM Importer] ")
 	print("[OSM Importer] Check stdout.txt for detailed results")
 	print("[OSM Importer] ========================================")
 end

@@ -58,6 +58,22 @@ export interface ConversionResult {
     towns: number;
     areas: number;
     objects: number;
+    output_size_mb?: number;
+    inventory?: {
+      streets?: Record<string, number>;
+      tracks?: Record<string, number>;
+      objects?: Record<string, number>;
+      places?: Record<string, number>;
+      areas?: {
+        forests?: number;
+        shrubs?: number;
+        grounds?: Record<string, number>;
+      };
+      signals?: number;
+      bridges?: number;
+      tunnels?: number;
+      streams?: number;
+    };
   };
   error?: string;
   duration?: number;
@@ -203,6 +219,7 @@ export class PythonRunner extends EventEmitter {
   private currentPercent: number = 0;
   private currentPhase: string = "init";
   private estimatedSeconds: number | null = null;
+  private completionStats: ConversionResult["stats"] | null = null;
 
   constructor() {
     super();
@@ -224,6 +241,7 @@ export class PythonRunner extends EventEmitter {
     this.currentPercent = 0;
     this.currentPhase = "init";
     this.estimatedSeconds = null;
+    this.completionStats = null;
     
     // Initialize file-based logs (if not already done)
     initConversionLogs(id);
@@ -460,7 +478,10 @@ export class PythonRunner extends EventEmitter {
           // Check if output file was created
           try {
             await fs.access(absoluteOutputFile);
-            const stats = this.parseStats(pythonLog || stdout);
+            
+            // Use detailed completion stats from Python if available,
+            // otherwise fall back to parsing stdout
+            const stats = this.completionStats || this.parseStats(pythonLog || stdout);
             
             // Save combined log file
             const logFile = absoluteOutputFile.replace(".lua", ".log");
@@ -578,6 +599,11 @@ export class PythonRunner extends EventEmitter {
       case "complete":
         this.currentPhase = "complete";
         this.currentPercent = 100;
+        // Capture detailed stats from Python's complete event
+        if (event.stats) {
+          this.completionStats = event.stats as ConversionResult["stats"];
+          console.log("[PythonRunner] Captured completion stats:", JSON.stringify(this.completionStats).substring(0, 200));
+        }
         this.addLog({
           timestamp,
           type: "phase",

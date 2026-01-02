@@ -18,6 +18,12 @@ export interface ImportOptions {
   build_streets_water: boolean;
   build_streets_airport: boolean;
   
+  // Towns & Buildings options
+  build_towns: boolean;
+  build_objects: boolean;
+  allow_town_development: boolean;
+  use_vanilla_town_streets: boolean;
+  
   // Other options
   skip_nodes_outofbounds: boolean;
   crash_type_not_found: boolean;
@@ -37,8 +43,12 @@ export const DEFAULT_IMPORT_OPTIONS: ImportOptions = {
   build_streets_footway_types: true,
   build_streets_water: true,
   build_streets_airport: true,
+  build_towns: true,
+  build_objects: true,
+  allow_town_development: true,
+  use_vanilla_town_streets: false,  // Default to modded streets (better connections)
   skip_nodes_outofbounds: true,
-  crash_type_not_found: true,
+  crash_type_not_found: false,  // Changed to false - better to skip missing types than crash
   log_level: 1,
 };
 
@@ -46,7 +56,7 @@ export interface ImportOptionMeta {
   key: keyof ImportOptions;
   label: string;
   description: string;
-  category: "general" | "streets" | "tracks" | "other";
+  category: "general" | "streets" | "tracks" | "towns" | "other";
   defaultValue: boolean | number;
   requiredMods?: string[];
 }
@@ -150,6 +160,36 @@ export const IMPORT_OPTIONS_META: ImportOptionMeta[] = [
     requiredMods: ["MKH Airport Roads"],
   },
   
+  // Towns & Buildings
+  {
+    key: "build_towns",
+    label: "Create Towns",
+    description: "Create town labels from OSM places (cities, villages, neighborhoods)",
+    category: "towns",
+    defaultValue: true,
+  },
+  {
+    key: "build_objects",
+    label: "Build Objects",
+    description: "Build decorative objects: trees, fountains, benches, bus stops, shelters, bike racks, street lamps, bollards",
+    category: "towns",
+    defaultValue: true,
+  },
+  {
+    key: "allow_town_development",
+    label: "Allow Town Development",
+    description: "Let buildings grow along residential streets. Streets won't be player-owned, allowing town simulation.",
+    category: "towns",
+    defaultValue: true,
+  },
+  {
+    key: "use_vanilla_town_streets",
+    label: "Use Vanilla Town Streets",
+    description: "Use vanilla town streets instead of modded ones. Has sidewalks but may cause connection issues.",
+    category: "towns",
+    defaultValue: false,
+  },
+  
   // Other
   {
     key: "skip_nodes_outofbounds",
@@ -163,7 +203,7 @@ export const IMPORT_OPTIONS_META: ImportOptionMeta[] = [
     label: "Crash on Missing Mod",
     description: "Abort if a street/track type is not available. Disable to continue despite errors.",
     category: "other",
-    defaultValue: true,
+    defaultValue: false,
   },
 ];
 
@@ -219,6 +259,10 @@ export function generateOptionsLua(options: ImportOptions): string {
     build_streets_footway_types = ${options.build_streets_footway_types},
     build_streets_water = ${options.build_streets_water},
     build_streets_airport = ${options.build_streets_airport},
+    build_towns = ${options.build_towns},
+    build_objects = ${options.build_objects},
+    allow_town_development = ${options.allow_town_development},
+    use_vanilla_town_streets = ${options.use_vanilla_town_streets},
     skip_nodes_outofbounds = ${options.skip_nodes_outofbounds},
     crash_type_not_found = ${options.crash_type_not_found},
     log_level = ${options.log_level},

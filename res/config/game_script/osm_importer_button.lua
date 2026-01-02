@@ -23,6 +23,8 @@ _G.OSM_UI = _G.OSM_UI or {
         build_forests = true,
         build_surfaces = true,
         build_towns = true,  -- Create town labels
+        build_objects = true,  -- Build decorative objects
+        use_way_batching = true,  -- Batch edges for faster import (disable if roads don't connect)
     }
 }
 
@@ -480,6 +482,12 @@ local function runImport()
     
     setStatus("IMPORTING... DO NOT CLOSE")
     
+    -- Debug: Log the current option values
+    print("[OSM-UI] === OPTION VALUES ===")
+    print("[OSM-UI] use_way_batching from S.options: " .. tostring(S.options.use_way_batching))
+    print("[OSM-UI] build_objects from S.options: " .. tostring(S.options.build_objects))
+    addLog("Batching mode: " .. (S.options.use_way_batching and "ENABLED" or "DISABLED"))
+    
     local ok, err = pcall(function()
         local userOptions = {
             build_streets = S.options.build_streets,
@@ -500,7 +508,12 @@ local function runImport()
             skip_forests = not S.availableMods.forester,
             skip_surfaces = not S.availableMods.paver,
             build_towns = S.options.build_towns,  -- Town labels (may crash)
+            build_objects = S.options.build_objects,  -- Decorative objects
+            use_way_batching = S.options.use_way_batching,  -- Batch mode for performance
         }
+        
+        -- Debug: Confirm the value in userOptions
+        print("[OSM-UI] use_way_batching in userOptions: " .. tostring(userOptions.use_way_batching))
         
         addLog("Loading modules directly...")
         
@@ -552,6 +565,12 @@ local function runImport()
             -- Step 4: Build edges (main work)
             if osmdata.edges and #osmdata.edges > 0 then
                 print("[OSM-UI] Building edges (" .. #osmdata.edges .. ")...")
+                addLog("Building " .. #osmdata.edges .. " edges...")
+                if userOptions.use_way_batching then
+                    addLog("Mode: Way Batching (faster)")
+                else
+                    addLog("Mode: Sequential (slower, better connections)")
+                end
                 
                 -- Debug: Check if vanilla types exist
                 local vanillaStreet = api.res.streetTypeRep.find("standard/country_small_new.lua")
@@ -598,9 +617,12 @@ local function runImport()
             end
             
             -- Step 5: Objects
-            if osmdata.objects and #osmdata.objects > 0 then
-                print("[OSM-UI] Building objects...")
+            if userOptions.build_objects and osmdata.objects and #osmdata.objects > 0 then
+                print("[OSM-UI] Building objects (" .. #osmdata.objects .. ")...")
+                addLog("Building " .. #osmdata.objects .. " objects...")
                 pcall(function() models.buildObjects(osmdata.objects) end)
+            elseif not userOptions.build_objects then
+                addLog("Skipping objects (disabled)")
             end
         end)
         
@@ -645,6 +667,117 @@ local function runImport()
         addLog("")
         addLog("This may be a Lua syntax error.")
         addLog("Check stdout.txt for details.")
+        setStatus("Import failed - see log")
+    end
+end
+
+-- Run import WITHOUT batching (forces sequential mode)
+local function runImportNoBatch()
+    if not S.osmDataInfo then
+        addLog("ERROR: No data loaded")
+        setStatus("Run checks first")
+        return
+    end
+    
+    addLog("")
+    addLog("=== STARTING IMPORT (NO BATCHING) ===")
+    addLog("Forcing SEQUENTIAL mode (slower but more reliable)")
+    
+    local edges = S.osmDataInfo.edges
+    setStatus("IMPORTING (SEQUENTIAL)... DO NOT CLOSE")
+    
+    print("[OSM-UI] === FORCED NO BATCHING ===")
+    print("[OSM-UI] use_way_batching FORCED to: false")
+    
+    local ok, err = pcall(function()
+        -- FORCE use_way_batching to false regardless of saved options
+        local userOptions = {
+            build_streets = S.options.build_streets,
+            build_tracks = S.options.build_tracks,
+            build_subwaytracks = true,
+            build_tramtracks = false,
+            build_bridges = S.options.build_bridges,
+            build_tunnels = S.options.build_tunnels,
+            build_signals = S.options.build_signals,
+            build_autobahn = true,
+            build_streets_street_types = true,
+            build_streets_footway_types = true,
+            build_streets_water = true,
+            build_streets_airport = true,
+            skip_nodes_outofbounds = true,
+            crash_type_not_found = false,
+            log_level = 1,
+            skip_forests = not S.availableMods.forester,
+            skip_surfaces = not S.availableMods.paver,
+            build_towns = S.options.build_towns,
+            build_objects = S.options.build_objects,
+            use_way_batching = false,  -- FORCED TO FALSE
+        }
+        
+        print("[OSM-UI] use_way_batching in userOptions: " .. tostring(userOptions.use_way_batching))
+        
+        addLog("Loading modules...")
+        
+        local osmdata, simpleproposalseq, towns, areas, models
+        
+        local loadOk, loadErr = pcall(function()
+            osmdata = require("osm_importer.osmdata")
+            simpleproposalseq = require("osm_importer.simpleproposal_seq")
+            towns = require("osm_importer.towns")
+            areas = require("osm_importer.areas")
+            models = require("osm_importer.models")
+            
+            _G.osm_importer = _G.osm_importer or {}
+            _G.osm_importer.options = userOptions
+        end)
+        
+        if not loadOk then
+            addLog("❌ ERROR loading modules:")
+            addLog("  " .. tostring(loadErr))
+            setStatus("Import failed - module error")
+            return
+        end
+        
+        addLog("Running import (SEQUENTIAL)...")
+        
+        local importOk, importErr = pcall(function()
+            if userOptions.build_towns and osmdata.towns and #osmdata.towns > 0 then
+                addLog("Creating " .. #osmdata.towns .. " towns...")
+                pcall(function() towns.createTownLabels(osmdata.towns) end)
+            end
+            
+            if not userOptions.skip_forests and not userOptions.skip_surfaces then
+                if osmdata.areas and osmdata.nodes then
+                    pcall(function() areas.buildAreas(osmdata.areas, osmdata.nodes) end)
+                end
+            end
+            
+            if osmdata.edges and #osmdata.edges > 0 then
+                addLog("Building " .. #osmdata.edges .. " edges (SEQUENTIAL)...")
+                simpleproposalseq.SimpleProposalSeq(osmdata, userOptions)
+            end
+            
+            if userOptions.build_objects and osmdata.objects and #osmdata.objects > 0 then
+                addLog("Building " .. #osmdata.objects .. " objects...")
+                pcall(function() models.buildObjects(osmdata.objects) end)
+            end
+        end)
+        
+        if importOk then
+            addLog("=============================")
+            addLog("IMPORT COMPLETE (SEQUENTIAL)!")
+            addLog("=============================")
+            setStatus("IMPORT COMPLETE ✓")
+        else
+            addLog("❌ IMPORT ERROR:")
+            addLog("  " .. tostring(importErr))
+            setStatus("Import failed")
+        end
+    end)
+    
+    if not ok then
+        addLog("❌ CRITICAL ERROR:")
+        addLog("  " .. tostring(err))
         setStatus("Import failed - see log")
     end
 end
@@ -755,6 +888,7 @@ local function createWindow()
             cb:setSelected(S.options[key], false)
             cb:onToggle(function(sel)
                 S.options[key] = sel
+                print("[OSM-UI] Option '" .. key .. "' changed to: " .. tostring(sel))
             end)
             layout:addItem(cb)
         end
@@ -767,6 +901,11 @@ local function createWindow()
         addOption("Build Forests", "build_forests")
         addOption("Build Surfaces", "build_surfaces")
         addOption("Create Towns", "build_towns")
+        addOption("Build Objects", "build_objects")
+        
+        layout:addItem(api.gui.comp.TextView.new(""))
+        layout:addItem(api.gui.comp.TextView.new("── PERFORMANCE ──"))
+        addOption("Use Way Batching (faster, may disconnect)", "use_way_batching")
         
         layout:addItem(api.gui.comp.TextView.new(""))
         layout:addItem(api.gui.comp.TextView.new("── ACTIONS ──"))
@@ -786,12 +925,19 @@ local function createWindow()
         end)
         layout:addItem(btnRefresh)
         
-        -- Run Import button
+        -- Run Import button (uses checkbox settings)
         local btnImport = api.gui.comp.Button.new(api.gui.comp.TextView.new("▶ RUN IMPORT"), true)
         btnImport:onClick(function()
             runImport()
         end)
         layout:addItem(btnImport)
+        
+        -- Run Import WITHOUT batching (ignores checkbox, forces sequential)
+        local btnImportNoBatch = api.gui.comp.Button.new(api.gui.comp.TextView.new("▶ RUN IMPORT (NO BATCH)"), true)
+        btnImportNoBatch:onClick(function()
+            runImportNoBatch()
+        end)
+        layout:addItem(btnImportNoBatch)
         
         -- Close button
         local btnClose = api.gui.comp.Button.new(api.gui.comp.TextView.new("CLOSE"), true)
@@ -872,14 +1018,22 @@ function data()
         guiUpdate = function() end,
         
         save = function()
+            print("[OSM-UI] save() called, use_way_batching = " .. tostring(S.options.use_way_batching))
             return { options = S.options }
         end,
         
         load = function(loadedData)
+            print("[OSM-UI] load() called")
             if loadedData and loadedData.options then
+                print("[OSM-UI] Loading saved options:")
                 for k, v in pairs(loadedData.options) do
+                    print("[OSM-UI]   " .. k .. " = " .. tostring(v))
                     S.options[k] = v
                 end
+                -- Log the final use_way_batching value
+                print("[OSM-UI] After load, use_way_batching = " .. tostring(S.options.use_way_batching))
+            else
+                print("[OSM-UI] No saved options to load")
             end
         end,
     }

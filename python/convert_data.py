@@ -34,15 +34,34 @@ def convert(nodes, ways, relations, map_bounds, bounds_length):
         },
         "objects": [],
     }
+    
+    # Detailed statistics tracking
+    stats = {
+        "objects": {},       # Count by object type (tree, fountain, bench, etc.)
+        "streets": {},       # Count by highway type (residential, motorway, etc.)
+        "tracks": {},        # Count by railway type (rail, tram, subway, etc.)
+        "areas": {           # Count by area type
+            "forests": 0,
+            "shrubs": 0,
+            "grounds": {},   # by surface type
+        },
+        "signals": 0,        # Railway signals
+        "bridges": 0,        # Bridge edges
+        "tunnels": 0,        # Tunnel edges
+        "streams": 0,        # Water edges
+        "places": {},        # by place type (city, town, village, etc.)
+    }
 
     places = dict((place, []) for place in ["municipality", "city", "town", "village", "suburb", "quarter",
                                             "neighbourhood", "square"])
 
-    def add_object(type, pos):
+    def add_object(obj_type, pos):
         data["objects"].append({
-            "type": type,
+            "type": obj_type,
             "pos": pos,
         })
+        # Track stats
+        stats["objects"][obj_type] = stats["objects"].get(obj_type, 0) + 1
 
     transf = Coord2metric(map_bounds, bounds_length).latlon2metricoffset
 
@@ -100,24 +119,120 @@ def convert(nodes, ways, relations, map_bounds, bounds_length):
                 "whistle": tags.get("railway:signal:whistle"),
             } or None,
         }
+        
+        # Track signal stats
+        if tags.get("railway") == "signal":
+            stats["signals"] += 1
 
+        # ============================================================
+        # OSM Objects -> TPF2 Assets
+        # See docs/POTENTIAL_OSM_OBJECTS.md for full list
+        # ============================================================
+        
+        # TREES
         if tags.get("natural") == "tree":
-            add_object("tree", pos)
+            # Check for conifer species
+            leaf_type = tags.get("leaf_type", "")
+            species = tags.get("species", "").lower()
+            genus = tags.get("genus", "").lower()
+            
+            is_conifer = (
+                leaf_type == "needleleaved" or
+                "pine" in species or "spruce" in species or "fir" in species or
+                "pinus" in genus or "picea" in genus or "abies" in genus
+            )
+            
+            if is_conifer:
+                add_object("tree_conifer", pos)
+            else:
+                add_object("tree", pos)
+        
+        # DECORATIVE
         if tags.get("amenity") == "fountain":
             add_object("fountain", pos)
+        
+        # STREET FURNITURE
         if tags.get("barrier") == "bollard":
             add_object("bollard", pos)
         if tags.get("advertising") == "column":
             add_object("litfass", pos)
+        if tags.get("amenity") == "bench":
+            add_object("bench", pos)
+        if tags.get("amenity") == "waste_basket":
+            add_object("trash_bin", pos)
+        if tags.get("amenity") == "post_box":
+            add_object("post_box", pos)
+        
+        # TRANSIT INFRASTRUCTURE
+        if tags.get("highway") == "bus_stop":
+            add_object("bus_stop", pos)
+        if tags.get("amenity") == "shelter" and tags.get("shelter_type") in ("public_transport", "bus", None):
+            add_object("shelter", pos)
+        
+        # BICYCLE INFRASTRUCTURE
+        if tags.get("amenity") == "bicycle_parking":
+            add_object("bike_rack", pos)
+        
+        # STREET LIGHTING (standalone lamps, not part of streets)
+        if tags.get("highway") == "street_lamp":
+            add_object("street_lamp", pos)
+        
+        # TRAFFIC INFRASTRUCTURE
+        # Traffic lights/signals
+        if tags.get("highway") == "traffic_signals":
+            add_object("traffic_light", pos)
+        
+        # Crossing signals (pedestrian)
+        if tags.get("highway") == "crossing" and tags.get("crossing:signals") == "yes":
+            add_object("traffic_light", pos)
+        
+        # Stop signs
+        if tags.get("highway") == "stop":
+            add_object("stop_sign", pos)
+        
+        # Give way / yield signs
+        if tags.get("highway") == "give_way":
+            add_object("yield_sign", pos)
+        
+        # Traffic mirrors
+        if tags.get("highway") == "traffic_mirror":
+            add_object("traffic_mirror", pos)
+        
+        # Speed cameras / enforcement
+        if tags.get("highway") == "speed_camera":
+            add_object("speed_camera", pos)
+        
+        # Pedestrian crossing markings
+        if tags.get("highway") == "crossing" and tags.get("crossing") in ("zebra", "marked", "traffic_signals"):
+            add_object("crossing", pos)
+        
+        # Fire hydrants
+        if tags.get("emergency") == "fire_hydrant":
+            add_object("fire_hydrant", pos)
+        
+        # Telephone boxes
+        if tags.get("amenity") == "telephone":
+            add_object("phone_booth", pos)
+        
+        # Clocks
+        if tags.get("amenity") == "clock":
+            add_object("clock", pos)
+        
+        # Flagpoles
+        if tags.get("man_made") == "flagpole":
+            add_object("flagpole", pos)
 
         if "place" in tags:
             if "name" in tags:
-                if tags["place"] not in places:
-                    places[tags["place"]] = []
-                places[tags["place"]].append({
+                place_type = tags["place"]
+                if place_type not in places:
+                    places[place_type] = []
+                places[place_type].append({
                     "name": tags["name"],
                     "pos": pos,
                 })
+                # Track place stats
+                stats["places"][place_type] = stats["places"].get(place_type, 0) + 1
             # else:
             # print(node.tags["place"], id, "no name!")
 
@@ -154,6 +269,17 @@ def convert(nodes, ways, relations, map_bounds, bounds_length):
             dic.update(addtags)
             data["areas"][area_type].append(dic)
             poly_areas_added.add(id)
+            
+            # Track area stats
+            if area_type == "forests":
+                stats["areas"]["forests"] += 1
+            elif area_type == "shrubs":
+                stats["areas"]["shrubs"] += 1
+            elif area_type == "grounds":
+                surface = addtags.get("surface", "unknown")
+                if surface not in stats["areas"]["grounds"]:
+                    stats["areas"]["grounds"][surface] = 0
+                stats["areas"]["grounds"][surface] += 1
 
     for id, way in ways.items():
         tags = way.tags
@@ -195,7 +321,7 @@ def convert(nodes, ways, relations, map_bounds, bounds_length):
                     # print(f"Out of bounds: Skip Edge({wnodes[i]},{wnodes[i + 1]})")
                     # continue  # skip edge
                     raise Exception(f"Way{id} - Edge({wnodes[i]},{wnodes[i + 1]}) Node not in data")
-                data["edges"][f"{id}_{i}"] = {
+                edge_data = {
                     "node0": wnodes[i],
                     "node1": wnodes[i + 1],
                     "street": isstreet and {
@@ -238,6 +364,21 @@ def convert(nodes, ways, relations, map_bounds, bounds_length):
                     "bridge": False if tags.get("bridge") == "no" else tags.get("bridge"),
                     "tunnel": False if tags.get("tunnel") == "no" else tags.get("tunnel"),
                 }
+                data["edges"][f"{id}_{i}"] = edge_data
+                
+                # Track edge statistics
+                if isstreet:
+                    highway_type = tags["highway"]
+                    stats["streets"][highway_type] = stats["streets"].get(highway_type, 0) + 1
+                if istrack:
+                    track_type = tags.get("railway", "unknown")
+                    stats["tracks"][track_type] = stats["tracks"].get(track_type, 0) + 1
+                if isstream:
+                    stats["streams"] += 1
+                if edge_data.get("bridge"):
+                    stats["bridges"] += 1
+                if edge_data.get("tunnel"):
+                    stats["tunnels"] += 1
 
             data["nodes"][wnodes[0]]["way_start_to"].append(wnodes[1])
             data["nodes"][wnodes[-1]]["way_end_from"].append(wnodes[-2])
@@ -317,6 +458,9 @@ def convert(nodes, ways, relations, map_bounds, bounds_length):
                 tags.get("area:highway") != "steps" and "railway" not in tags:
             add_multipolygon(relation, "grounds", surface=tags.get("surface"), leisure=tags.get("leisure"))
 
+    # Include detailed stats in the output
+    data["detailed_stats"] = stats
+    
     return data
 
 

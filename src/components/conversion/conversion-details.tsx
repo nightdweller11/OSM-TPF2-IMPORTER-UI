@@ -35,6 +35,7 @@ import {
   Ruler,
   Copy,
   Check,
+  Armchair,
 } from "lucide-react";
 import { formatNumber, formatCoordinate } from "@/lib/utils";
 import { STATUS_LABELS } from "@/lib/constants";
@@ -89,6 +90,22 @@ interface ConversionStats {
   towns: number;
   areas: number;
   objects: number;
+  output_size_mb?: number;
+  inventory?: {
+    streets?: Record<string, number>;
+    tracks?: Record<string, number>;
+    objects?: Record<string, number>;
+    places?: Record<string, number>;
+    areas?: {
+      forests?: number;
+      shrubs?: number;
+      grounds?: Record<string, number>;
+    };
+    signals?: number;
+    bridges?: number;
+    tunnels?: number;
+    streams?: number;
+  };
 }
 
 interface ConversionData {
@@ -502,6 +519,103 @@ export function ConversionDetails({
             </Card>
           )}
 
+          {/* Detailed Inventory */}
+          {conversion.stats?.inventory && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Map Inventory
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Streets */}
+                {conversion.stats.inventory.streets && Object.keys(conversion.stats.inventory.streets).length > 0 && (
+                  <InventorySection 
+                    title="Streets & Roads" 
+                    icon={Car} 
+                    items={conversion.stats.inventory.streets} 
+                  />
+                )}
+
+                {/* Tracks */}
+                {conversion.stats.inventory.tracks && Object.keys(conversion.stats.inventory.tracks).length > 0 && (
+                  <InventorySection 
+                    title="Railway Tracks" 
+                    icon={Train} 
+                    items={conversion.stats.inventory.tracks} 
+                  />
+                )}
+
+                {/* Infrastructure */}
+                {(conversion.stats.inventory.bridges > 0 || 
+                  conversion.stats.inventory.tunnels > 0 || 
+                  conversion.stats.inventory.signals > 0 ||
+                  conversion.stats.inventory.streams > 0) && (
+                  <div>
+                    <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                      <Signpost className="h-4 w-4" />
+                      Infrastructure
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {conversion.stats.inventory.bridges > 0 && (
+                        <InventoryItem label="Bridges" count={conversion.stats.inventory.bridges} />
+                      )}
+                      {conversion.stats.inventory.tunnels > 0 && (
+                        <InventoryItem label="Tunnels" count={conversion.stats.inventory.tunnels} />
+                      )}
+                      {conversion.stats.inventory.signals > 0 && (
+                        <InventoryItem label="Signals" count={conversion.stats.inventory.signals} />
+                      )}
+                      {conversion.stats.inventory.streams > 0 && (
+                        <InventoryItem label="Streams/Rivers" count={conversion.stats.inventory.streams} />
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Objects */}
+                {conversion.stats.inventory.objects && Object.keys(conversion.stats.inventory.objects).length > 0 && (
+                  <InventorySection 
+                    title="Decorative Objects" 
+                    icon={Armchair} 
+                    items={conversion.stats.inventory.objects} 
+                  />
+                )}
+
+                {/* Areas */}
+                {conversion.stats.inventory.areas && (
+                  <div>
+                    <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                      <TreePine className="h-4 w-4" />
+                      Areas & Surfaces
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {conversion.stats.inventory.areas.forests > 0 && (
+                        <InventoryItem label="Forests" count={conversion.stats.inventory.areas.forests} />
+                      )}
+                      {conversion.stats.inventory.areas.shrubs > 0 && (
+                        <InventoryItem label="Shrubs" count={conversion.stats.inventory.areas.shrubs} />
+                      )}
+                      {conversion.stats.inventory.areas.grounds && Object.entries(conversion.stats.inventory.areas.grounds).map(([surface, count]) => (
+                        <InventoryItem key={surface} label={formatLabel(surface)} count={count} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Places */}
+                {conversion.stats.inventory.places && Object.keys(conversion.stats.inventory.places).length > 0 && (
+                  <InventorySection 
+                    title="Places" 
+                    icon={Building} 
+                    items={conversion.stats.inventory.places} 
+                  />
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Logs section */}
           {(isProcessing || logs.length > 0) && (
             <Card>
@@ -894,5 +1008,116 @@ function FilterCheckbox({
       </Label>
     </div>
   );
+}
+
+function InventorySection({
+  title,
+  icon: Icon,
+  items,
+}: {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  items: Record<string, number>;
+}) {
+  // Sort items by count descending
+  const sortedItems = Object.entries(items).sort((a, b) => b[1] - a[1]);
+  const totalCount = sortedItems.reduce((sum, [, count]) => sum + count, 0);
+  
+  return (
+    <div>
+      <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+        <Icon className="h-4 w-4" />
+        {title}
+        <span className="text-xs text-muted-foreground">({formatNumber(totalCount)} total)</span>
+      </h4>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {sortedItems.map(([key, count]) => (
+          <InventoryItem key={key} label={formatLabel(key)} count={count} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InventoryItem({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm">
+      <span className="text-muted-foreground truncate">{label}</span>
+      <span className="font-medium ml-2">{formatNumber(count)}</span>
+    </div>
+  );
+}
+
+function formatLabel(key: string): string {
+  // Known object type mappings for better display names
+  const labelMap: Record<string, string> = {
+    tree: "Trees (Deciduous)",
+    tree_conifer: "Trees (Conifer)",
+    fountain: "Fountains",
+    bench: "Benches",
+    bus_stop: "Bus Stops",
+    shelter: "Transit Shelters",
+    bike_rack: "Bike Racks",
+    street_lamp: "Street Lamps",
+    bollard: "Bollards",
+    trash_bin: "Trash Bins",
+    post_box: "Post Boxes",
+    litfass: "Advertising Columns",
+    // Street types
+    motorway: "Motorways",
+    motorway_link: "Motorway Ramps",
+    trunk: "Trunk Roads",
+    trunk_link: "Trunk Road Ramps",
+    primary: "Primary Roads",
+    primary_link: "Primary Ramps",
+    secondary: "Secondary Roads",
+    secondary_link: "Secondary Ramps",
+    tertiary: "Tertiary Roads",
+    tertiary_link: "Tertiary Ramps",
+    residential: "Residential Streets",
+    living_street: "Living Streets",
+    unclassified: "Unclassified Roads",
+    service: "Service Roads",
+    pedestrian: "Pedestrian Areas",
+    footway: "Footways",
+    cycleway: "Cycleways",
+    path: "Paths",
+    track: "Tracks",
+    // Track types
+    rail: "Standard Rail",
+    light_rail: "Light Rail",
+    subway: "Subway/Metro",
+    tram: "Tram",
+    narrow_gauge: "Narrow Gauge",
+    preserved: "Preserved/Heritage",
+    disused: "Disused",
+    construction: "Under Construction",
+    // Place types
+    city: "Cities",
+    town: "Towns",
+    village: "Villages",
+    suburb: "Suburbs",
+    quarter: "Quarters",
+    neighbourhood: "Neighbourhoods",
+    // Ground surfaces
+    residential_landuse: "Residential Areas",
+    commercial: "Commercial Areas",
+    industrial: "Industrial Areas",
+    retail: "Retail Areas",
+    farmland: "Farmland",
+    meadow: "Meadows",
+    water: "Water Bodies",
+  };
+  
+  if (labelMap[key]) {
+    return labelMap[key];
+  }
+  
+  // Convert snake_case or camelCase to Title Case
+  return key
+    .replace(/_/g, " ")
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (s) => s.toUpperCase())
+    .trim();
 }
 
