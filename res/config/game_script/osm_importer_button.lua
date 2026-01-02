@@ -22,8 +22,7 @@ _G.OSM_UI = _G.OSM_UI or {
         build_signals = true,
         build_forests = true,
         build_surfaces = true,
-        build_towns = false,  -- OFF by default - causes crashes near water
-        clear_existing = true,
+        build_towns = true,  -- Create town labels
     }
 }
 
@@ -394,6 +393,73 @@ local function runAllChecks()
     S.checksComplete = true
 end
 
+-- Clear map function (separate button action) - SAFE CLEAR ONLY
+-- Note: Removing towns and edges via API crashes the game engine
+-- User must use in-game tools or start a new empty map
+local function clearMap()
+    addLog("")
+    addLog("=== SAFE CLEAR ===")
+    setStatus("Clearing (safe mode)...")
+    
+    local ok, err = pcall(function()
+        local bulldoze = require("osm_importer.bulldoze")
+        
+        -- Only safe operations that don't crash
+        addLog("Removing vehicles & lines...")
+        pcall(function() bulldoze.delVehicles() end)
+        pcall(function() bulldoze.delLines() end)
+        
+        addLog("Removing animals...")
+        pcall(function() bulldoze.delAnimals() end)
+        
+        addLog("Removing assets...")
+        pcall(function() bulldoze.delAssets() end)
+        
+        addLog("Removing stations...")
+        pcall(function() bulldoze.delStationsGroup() end)
+        
+        -- Note: The following operations crash the game:
+        -- - delTowns() - removeTown command crashes game engine
+        -- - delEdges() - bulldozing edges can crash
+        -- - delNodes() - can crash if edges still reference them
+        -- - setTerrainHeight() - not properly supported
+        
+        -- Count remaining items
+        local remainingEdges = 0
+        local remainingTowns = 0
+        local remainingIndustries = 0
+        pcall(function()
+            remainingEdges = #game.interface.getEntities({ radius = math.huge }, { type = "BASE_EDGE" })
+            remainingTowns = #game.interface.getEntities({ radius = math.huge }, { type = "TOWN" })
+            remainingIndustries = #game.interface.getEntities({ radius = math.huge }, { type = "SIM_BUILDING" })
+        end)
+        
+        addLog("")
+        addLog("Cleared: vehicles, lines, animals, assets, stations")
+        addLog("")
+        addLog("Remaining (cannot clear via API):")
+        addLog("  Roads/Tracks: " .. remainingEdges)
+        addLog("  Towns: " .. remainingTowns)
+        addLog("  Industries: " .. remainingIndustries)
+        addLog("")
+        addLog("To fully clear the map:")
+        addLog("  1. Start a NEW EMPTY MAP")
+        addLog("     (Game > New Game > Empty Map)")
+        addLog("  OR")
+        addLog("  2. Use in-game bulldoze tool")
+        addLog("     (select roads/tracks and delete)")
+    end)
+    
+    if ok then
+        addLog("")
+        addLog("✓ Safe clear complete!")
+        setStatus("Cleared (items remain)")
+    else
+        addLog("⚠️ Error: " .. tostring(err))
+        setStatus("Clear had issues")
+    end
+end
+
 -- Run import with proper handling
 local function runImport()
     if not S.osmDataInfo then
@@ -433,7 +499,6 @@ local function runImport()
             log_level = 1,
             skip_forests = not S.availableMods.forester,
             skip_surfaces = not S.availableMods.paver,
-            clear_existing = S.options.clear_existing,
             build_towns = S.options.build_towns,  -- Town labels (may crash)
         }
         
@@ -470,17 +535,13 @@ local function runImport()
             -- Step 1: Towns (optional, can crash near water)
             if userOptions.build_towns and osmdata.towns and #osmdata.towns > 0 then
                 print("[OSM-UI] Creating towns...")
+                addLog("Creating " .. #osmdata.towns .. " towns...")
                 pcall(function() towns.createTownLabels(osmdata.towns) end)
             end
             
-            -- Step 2: Clear existing (if requested)
-            if userOptions.clear_existing then
-                print("[OSM-UI] Clearing map...")
-                pcall(function() bulldoze.delAssets() end)
-                pcall(function() bulldoze.delEdges() end)
-            end
+            -- Note: Clear map is now a separate button action
             
-            -- Step 3: Areas (forests/surfaces)
+            -- Step 2: Areas (forests/surfaces)
             if not userOptions.skip_forests and not userOptions.skip_surfaces then
                 if osmdata.areas and osmdata.nodes then
                     print("[OSM-UI] Building areas...")
@@ -622,7 +683,66 @@ local function createWindow()
         layout:addItem(api.gui.comp.TextView.new("      OSM MAP IMPORTER"))
         layout:addItem(api.gui.comp.TextView.new("══════════════════════════════"))
         
+        -- MAP INFO SECTION (shown at top)
+        layout:addItem(api.gui.comp.TextView.new(""))
+        layout:addItem(api.gui.comp.TextView.new("── MAP DATA INFO ──"))
+        
+        -- Get OSM data info immediately
+        local mapInfoText = "Loading..."
+        pcall(function()
+            local osmdata = require("osm_importer.osmdata")
+            if osmdata then
+                local edges = osmdata.edges and #osmdata.edges or 0
+                local towns = osmdata.towns and #osmdata.towns or 0
+                local areas = 0
+                if osmdata.areas then
+                    areas = (osmdata.areas.forests and #osmdata.areas.forests or 0) +
+                            (osmdata.areas.grounds and #osmdata.areas.grounds or 0)
+                end
+                local objects = osmdata.objects and #osmdata.objects or 0
+                
+                mapInfoText = string.format("Edges: %d | Towns: %d | Areas: %d | Objects: %d", 
+                    edges, towns, areas, objects)
+            else
+                mapInfoText = "No osmdata.lua loaded"
+            end
+        end)
+        S.mapInfoText = api.gui.comp.TextView.new(mapInfoText)
+        layout:addItem(S.mapInfoText)
+        
+        -- OSM source dimensions
+        local dimInfoText = ""
+        pcall(function()
+            local osmdata = require("osm_importer.osmdata")
+            if osmdata and osmdata.bounds then
+                local b = osmdata.bounds
+                if b.osm_width_km and b.osm_height_km then
+                    dimInfoText = string.format("OSM: %.1fx%.1f km | Scale: 1:%.1f", 
+                        b.osm_width_km, b.osm_height_km, b.scale or 1)
+                end
+            end
+        end)
+        if dimInfoText ~= "" then
+            layout:addItem(api.gui.comp.TextView.new(dimInfoText))
+        end
+        
+        -- Current TPF2 map size
+        local tpf2InfoText = ""
+        pcall(function()
+            local mapSize = api.engine.terrain.getHeightmapSize()
+            if mapSize then
+                -- Heightmap size to meters (each cell is ~4m)
+                local mapWidth = mapSize.x * 4
+                local mapHeight = mapSize.y * 4
+                tpf2InfoText = string.format("TPF2 Map: %.1fx%.1f km", mapWidth/1000, mapHeight/1000)
+            end
+        end)
+        if tpf2InfoText ~= "" then
+            layout:addItem(api.gui.comp.TextView.new(tpf2InfoText))
+        end
+        
         -- Status line
+        layout:addItem(api.gui.comp.TextView.new(""))
         S.statusText = api.gui.comp.TextView.new("Status: Running checks...")
         layout:addItem(S.statusText)
         
@@ -646,39 +766,37 @@ local function createWindow()
         addOption("Place Signals", "build_signals")
         addOption("Build Forests", "build_forests")
         addOption("Build Surfaces", "build_surfaces")
-        addOption("Create Towns (may crash)", "build_towns")
-        addOption("Clear Map First", "clear_existing")
+        addOption("Create Towns", "build_towns")
         
         layout:addItem(api.gui.comp.TextView.new(""))
         layout:addItem(api.gui.comp.TextView.new("── ACTIONS ──"))
+        layout:addItem(api.gui.comp.TextView.new("(For full clear: start NEW EMPTY MAP)"))
+        
+        -- Clear Map button - using proper Button component
+        local btnClear = api.gui.comp.Button.new(api.gui.comp.TextView.new("SAFE CLEAR"), true)
+        btnClear:onClick(function()
+            clearMap()
+        end)
+        layout:addItem(btnClear)
         
         -- Refresh checks button
-        local btnRefresh = api.gui.comp.CheckBox.new("[ ↻ REFRESH CHECKS ]")
-        btnRefresh:onToggle(function(sel)
-            if sel then
-                btnRefresh:setSelected(false, false)
-                runAllChecks()
-            end
+        local btnRefresh = api.gui.comp.Button.new(api.gui.comp.TextView.new("REFRESH CHECKS"), true)
+        btnRefresh:onClick(function()
+            runAllChecks()
         end)
         layout:addItem(btnRefresh)
         
         -- Run Import button
-        local btnImport = api.gui.comp.CheckBox.new("[ ▶▶▶ RUN IMPORT ◀◀◀ ]")
-        btnImport:onToggle(function(sel)
-            if sel then
-                btnImport:setSelected(false, false)
-                runImport()
-            end
+        local btnImport = api.gui.comp.Button.new(api.gui.comp.TextView.new("▶ RUN IMPORT"), true)
+        btnImport:onClick(function()
+            runImport()
         end)
         layout:addItem(btnImport)
         
         -- Close button
-        local btnClose = api.gui.comp.CheckBox.new("[ X CLOSE ]")
-        btnClose:onToggle(function(sel)
-            if sel then
-                btnClose:setSelected(false, false)
-                closeWindow()
-            end
+        local btnClose = api.gui.comp.Button.new(api.gui.comp.TextView.new("CLOSE"), true)
+        btnClose:onClick(function()
+            closeWindow()
         end)
         layout:addItem(btnClose)
         

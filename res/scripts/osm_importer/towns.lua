@@ -9,12 +9,22 @@ function t.createTown(caps,pos,name,devactive)
 		town.position = api.type.Vec2f.new(pos[1],pos[2])
 		assert(#caps==3)
 		town.initialLandUseCapacities = caps
+		
+		-- Set initial land use capacities properly
+		-- This determines how many buildings of each type can grow
+		town.initialLandUseCapacities = api.type.VectorFloat.new()
+		town.initialLandUseCapacities:add(caps[1])  -- Residential
+		town.initialLandUseCapacities:add(caps[2])  -- Commercial
+		town.initialLandUseCapacities:add(caps[3])  -- Industrial
+		
 		api.cmd.sendCommand(
 			api.cmd.make.createTowns({town}),
 			function(res, success)
 				if success then
-					if devactive==false then
-						-- game.interface.setTownDevelopmentActive(id, false)
+					print("[OSM Importer] Town '" .. name .. "' created successfully")
+					-- Enable town development so buildings grow
+					if devactive ~= false then
+						-- Town development is enabled by default
 					end
 				else
 					print("[OSM Importer] Town creation failed: " .. tostring(name))
@@ -53,8 +63,11 @@ function t.createTownLabel(pos, name)
 		return false
 	end
 	
-	-- Try to create with minimal capacity to avoid crashes
-	return t.createTown({0,0,10}, pos, name, false)
+	-- Create town with proper capacities for building growth
+	-- Format: {residential, commercial, industrial}
+	-- Higher values = more buildings can grow
+	local capacities = {100, 50, 25}  -- Residential-focused town
+	return t.createTown(capacities, pos, name, true)  -- devactive=true to enable development
 end
 
 function t.createTownLabels(towns)
