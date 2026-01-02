@@ -20,16 +20,209 @@ def _report_step(message, percent=None):
         progress.step(message, percent=percent)
 
 
+def simplify_paths_douglas_peucker(nodes, edges, epsilon=2.0, max_merged_length=250, max_angle_deg=10):
+    """
+    Aggressively simplify paths using a Douglas-Peucker-like algorithm.
+    
+    This merges consecutive collinear edges into longer edges where possible,
+    significantly reducing the total edge count while maintaining road shape.
+    
+    Args:
+        nodes: Dict of node_id -> node_data
+        edges: Dict of edge_id -> edge_data
+        epsilon: Maximum perpendicular distance from straight line to allow merging (meters)
+        max_merged_length: Maximum length of a merged edge (meters)
+        max_angle_deg: Maximum angle change (degrees) to allow merging
+    
+    Returns:
+        Number of nodes removed
+    """
+    from collections import defaultdict
+    
+    removed_count = 0
+    max_angle_rad = max_angle_deg * pi / 180
+    
+    # Build adjacency graph: node_id -> list of (neighbor_id, edge_id, edge_data)
+    adjacency = defaultdict(list)
+    for edge_id, edge in edges.items():
+        n0, n1 = edge["node0"], edge["node1"]
+        adjacency[n0].append((n1, edge_id, edge))
+        adjacency[n1].append((n0, edge_id, edge))
+    
+    # Find nodes that can be removed:
+    # - Degree 2 (exactly 2 neighbors)
+    # - Both neighbors have same edge type (both street or both track)
+    # - The angle change is small
+    # - Removing wouldn't create an edge that's too long
+    
+    def get_pos(node_id):
+        pos = nodes[node_id]["pos"]
+        return Vec2(pos[0], pos[1])
+    
+    def point_to_line_distance(point, line_start, line_end):
+        """Calculate perpendicular distance from point to line segment."""
+        line_vec = line_end - line_start
+        line_len = line_vec.length()
+        if line_len < 0.001:
+            return (point - line_start).length()
+        # Normalize
+        line_unit = Vec2(line_vec.x / line_len, line_vec.y / line_len)
+        # Vector from line start to point
+        point_vec = point - line_start
+        # Project onto line
+        proj_length = point_vec.x * line_unit.x + point_vec.y * line_unit.y
+        # Perpendicular distance
+        perp = Vec2(point_vec.x - proj_length * line_unit.x, 
+                   point_vec.y - proj_length * line_unit.y)
+        return perp.length()
+    
+    def get_angle(v1, v2):
+        """Get angle between two vectors in radians."""
+        len1 = v1.length()
+        len2 = v2.length()
+        if len1 < 0.001 or len2 < 0.001:
+            return 0
+        dot = (v1.x * v2.x + v1.y * v2.y) / (len1 * len2)
+        dot = max(-1, min(1, dot))  # Clamp for numerical stability
+        return math.acos(dot)
+    
+    def edges_compatible(e1, e2):
+        """Check if two edges have compatible types for merging."""
+        # Both must be same type (street or track)
+        if bool(e1.get("street")) != bool(e2.get("street")):
+            return False
+        if bool(e1.get("track")) != bool(e2.get("track")):
+            return False
+        # For streets, check if they have the same highway type
+        if e1.get("street") and e2.get("street"):
+            if e1["street"].get("type") != e2["street"].get("type"):
+                return False
+        # For tracks, check if they have the same railway type
+        if e1.get("track") and e2.get("track"):
+            if e1["track"].get("type") != e2["track"].get("type"):
+                return False
+        return True
+    
+    # Process nodes in multiple passes until no more can be removed
+    nodes_to_check = set(n for n in nodes.keys() if not nodes[n].get("removed"))
+    
+    while True:
+        removed_this_pass = 0
+        
+        for node_id in list(nodes_to_check):
+            if node_id not in adjacency:
+                continue
+            
+            neighbors = adjacency[node_id]
+            
+            # Skip if not degree 2
+            if len(neighbors) != 2:
+                continue
+            
+            # Get the two neighbors and their edges
+            (n1, e1_id, e1), (n2, e2_id, e2) = neighbors
+            
+            # Skip if node is marked as important (intersection, signal, etc.)
+            node_data = nodes.get(node_id, {})
+            if node_data.get("signal") or node_data.get("switch"):
+                continue
+            
+            # Skip if edges are not compatible
+            if not edges_compatible(e1, e2):
+                continue
+            
+            # Calculate geometry
+            p0 = get_pos(n1)
+            p1 = get_pos(node_id)
+            p2 = get_pos(n2)
+            
+            # Check angle
+            v1 = p1 - p0
+            v2 = p2 - p1
+            angle = get_angle(v1, v2)
+            if angle > max_angle_rad:
+                continue
+            
+            # Check distance from node to the straight line between neighbors
+            dist = point_to_line_distance(p1, p0, p2)
+            if dist > epsilon:
+                continue
+            
+            # Check merged length
+            merged_length = (p2 - p0).length()
+            if merged_length > max_merged_length:
+                continue
+            
+            # This node can be removed!
+            # Create new merged edge
+            new_edge_id = f"{e1_id}_merged_{e2_id}"
+            
+            # Copy edge properties from the longer original edge
+            if (p1 - p0).length() > (p2 - p1).length():
+                new_edge = e1.copy()
+            else:
+                new_edge = e2.copy()
+            
+            new_edge["node0"] = n1
+            new_edge["node1"] = n2
+            new_edge["merged"] = True
+            
+            # Remove old edges
+            if e1_id in edges:
+                del edges[e1_id]
+            if e2_id in edges:
+                del edges[e2_id]
+            
+            # Add new edge
+            edges[new_edge_id] = new_edge
+            
+            # Update adjacency
+            # Remove node_id from neighbors' lists
+            adjacency[n1] = [(n, eid, e) for (n, eid, e) in adjacency[n1] if n != node_id]
+            adjacency[n2] = [(n, eid, e) for (n, eid, e) in adjacency[n2] if n != node_id]
+            
+            # Add new connection
+            adjacency[n1].append((n2, new_edge_id, new_edge))
+            adjacency[n2].append((n1, new_edge_id, new_edge))
+            
+            # Remove node from adjacency
+            del adjacency[node_id]
+            
+            # Mark node as removed
+            nodes[node_id]["removed"] = True
+            
+            removed_count += 1
+            removed_this_pass += 1
+        
+        if removed_this_pass == 0:
+            break
+        
+        print(f"  Pass complete: removed {removed_this_pass} nodes")
+    
+    return removed_count
+
+
 def optimize(data):
     # Total edge count for progress estimation
     total_edges = len(data.get("edges", {}))
     _report_step(f"Starting optimization of {total_edges:,} edges...", percent=50)
     
+    # 0. First, aggressively simplify paths using Douglas-Peucker algorithm
+    # This merges collinear nodes early, before any other processing
+    print("=" * 16 + " Douglas-Peucker Path Simplification " + "=" * 16)
+    _report_step("Simplifying paths (Douglas-Peucker)...", percent=50)
+    simplified_count = simplify_paths_douglas_peucker(data["nodes"], data["edges"], 
+                                                       epsilon=2.0,  # Allow 2m deviation from straight line
+                                                       max_merged_length=250,  # Max merged edge length
+                                                       max_angle_deg=10)  # Max angle change to merge
+    print(f"Douglas-Peucker: Removed {simplified_count} redundant nodes")
+    
     # 1. Avoid very long edges (can cut through terrain, and affects curve splines negatively)
+    # Increased limits since we now have better simplification
     print("=" * 16 + " Split long Edges " + "=" * 16)
     _report_step("Splitting long edges...", percent=51)
-    split_long_edges(data["nodes"], data["edges"], 80, etype="street")
-    split_long_edges(data["nodes"], data["edges"], 150, etype="track")
+    split_long_edges(data["nodes"], data["edges"], 120, etype="street")  # Was 80, now 120
+    split_long_edges(data["nodes"], data["edges"], 200, etype="track")   # Was 150, now 200
 
     # 2. Create graph and obtain paths
     print("=" * 16 + " Create Graphs " + "=" * 16)

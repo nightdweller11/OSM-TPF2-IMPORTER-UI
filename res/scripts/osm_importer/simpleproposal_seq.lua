@@ -53,15 +53,36 @@ function s.SimpleProposalSeq(data, options)
 	print("Set Nodes z height and tangents...")
 	nodesheights.setAllNodesHeight(data.nodes, data.paths, data.edges)
 	
-	-- Collect edges that should be built
+	-- Collect edges that should be built, pre-filtering out-of-bounds edges
 	local allEdges = {}
+	local skippedOutOfBounds = 0
 	for i, edge in pairs(data.edges) do
 		if (options.build_streets and edge.street)
 		or (options.build_tracks and edge.track 
 			and (options.build_tramtracks or not edge.track.tram)
 			and (options.build_subwaytracks or not edge.track.subway)) then
+			-- Pre-filter: check if both nodes are within map bounds
+			local n0 = data.nodes[edge.node0]
+			local n1 = data.nodes[edge.node1]
+			local skip = false
+			if options.skip_nodes_outofbounds then
+				if n0 and n0.pos and not tools.isValidCoordinate(n0.pos[1], n0.pos[2]) then
+					skip = true
+				end
+				if n1 and n1.pos and not tools.isValidCoordinate(n1.pos[1], n1.pos[2]) then
+					skip = true
+				end
+			end
+			if skip then
+				skippedOutOfBounds = skippedOutOfBounds + 1
+			else
 				table.insert(allEdges, edge)
+			end
 		end
+	end
+	
+	if skippedOutOfBounds > 0 then
+		print(string.format("[Optimizer] Pre-filtered %d edges with out-of-bounds nodes", skippedOutOfBounds))
 	end
 	
 	s.totalEdges = #allEdges
@@ -252,9 +273,27 @@ function s.SimpleProposalSeqWayCmd(wayData, cbLevel)
 	
 	s.edgesProcessed = s.edgesProcessed + #edges
 	
+	-- Track if the callback was actually called (empty proposals skip the callback)
+	local callbackCalled = false
+	local batchSuccess = false
+	
 	-- Wrap in pcall to catch any Lua errors
 	local ok, err = pcall(function()
-		simpleproposal.SimpleProposalCmd(d2, context, ignoreErrors, cbLevel, function(res, success)
+		simpleproposal.SimpleProposalCmd(d2, context, ignoreErrors, cbLevel, function(res, success, wasEmpty)
+			callbackCalled = true
+			batchSuccess = success
+			
+			-- If proposal was empty, trigger fallback to edge-by-edge
+			if wasEmpty then
+				print("[BATCH] Empty proposal for way " .. wayId .. " - falling back to edge-by-edge")
+				-- Process edges one by one instead
+				s.fallbackEdges = edges
+				s.fallbackIndex = 1
+				s.fallbackWayId = wayId
+				s.processFallbackEdge()
+				return  -- Don't continue to next way yet
+			end
+			
 			-- Count results
 			for _, edge in ipairs(edges) do
 				local etype = edge.track and "TRACK" or edge.street and "STREET"
@@ -274,17 +313,76 @@ function s.SimpleProposalSeqWayCmd(wayData, cbLevel)
 		end, true)  -- retryWSmStreet
 	end)
 	
+	-- If callback not called at all (shouldn't happen now), fall back to edge-by-edge
+	if ok and not callbackCalled then
+		print("[BATCH] No callback for way " .. wayId .. " - falling back to edge-by-edge")
+		s.fallbackEdges = edges
+		s.fallbackIndex = 1
+		s.fallbackWayId = wayId
+		s.processFallbackEdge()
+		return
+	end
+	
 	if not ok then
 		print("[ERROR] Batch failed with error: " .. tostring(err))
-		print("[ERROR] Skipping way " .. wayId .. " (" .. #edges .. " edges)")
-		-- Mark edges as failed and continue
-		for _, edge in ipairs(edges) do
+		print("[FALLBACK] Way " .. wayId .. " - falling back to edge-by-edge for " .. #edges .. " edges")
+		-- Fall back to processing these edges one by one
+		s.fallbackEdges = edges
+		s.fallbackIndex = 1
+		s.fallbackWayId = wayId
+		s.processFallbackEdge()
+	end
+end
+
+-- Process edges one by one when batch fails
+function s.processFallbackEdge()
+	if s.fallbackIndex > #s.fallbackEdges then
+		-- Done with fallback, continue to next way
+		print("[FALLBACK] Completed " .. s.fallbackWayId)
+		s.fallbackEdges = nil
+		s.fallbackIndex = nil
+		s.fallbackWayId = nil
+		s.SimpleProposalSeqWay()
+		return
+	end
+	
+	local edge = s.fallbackEdges[s.fallbackIndex]
+	s.fallbackIndex = s.fallbackIndex + 1
+	
+	-- Process single edge like sequential mode
+	local d2 = {
+		nodes = {
+			[edge.node0] = s.data.nodes[edge.node0],
+			[edge.node1] = s.data.nodes[edge.node1],
+		},
+		edges = { edge },
+	}
+	
+	-- Use cached node lookup
+	s.replaceNodeCached(d2, edge.node0)
+	s.replaceNodeCached(d2, edge.node1)
+	
+	local ok2, err2 = pcall(function()
+		simpleproposal.SimpleProposalCmd(d2, context, ignoreErrors, s.cbLevel, function(res, success)
 			local etype = edge.track and "TRACK" or edge.street and "STREET"
 			s.nedges[etype] = s.nedges[etype] + 1
-			s.nosuc[etype] = s.nosuc[etype] + 1
-		end
-		-- Continue to next way
-		s.SimpleProposalSeqWay()
+			if success then
+				s.placed = s.placed + 1
+				s.updateNodeCacheFromResult(edge, res)
+			else
+				s.nosuc[etype] = s.nosuc[etype] + 1
+			end
+			-- Process next fallback edge
+			s.processFallbackEdge()
+		end, true)
+	end)
+	
+	if not ok2 then
+		-- Even single edge failed, skip it
+		local etype = edge.track and "TRACK" or edge.street and "STREET"
+		s.nedges[etype] = s.nedges[etype] + 1
+		s.nosuc[etype] = s.nosuc[etype] + 1
+		s.processFallbackEdge()
 	end
 end
 

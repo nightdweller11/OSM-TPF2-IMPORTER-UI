@@ -8,6 +8,7 @@ import convert_data
 import optimize_edges
 import sort_edges
 import edge_preprocessor
+import cleanup_nodes
 from lua_remove_nil import lua_remove_nil
 
 #################################################
@@ -220,8 +221,22 @@ progress.step(f"Preprocessed: {preprocess_stats.get('final_count', 0):,} edges "
 
 #################################################
 
-# 5. remove nil values, makes file shorter
+# 5. Cleanup: remove unused edges and nodes, nil values
+log("=" * 16 + " Cleanup Data " + "=" * 16)
 progress.phase("cleanup", "Cleaning up data...", 80)
+
+# Remove out-of-bounds edges and unused nodes (removed, out-of-bounds, orphans)
+cleanup_stats = {}
+data = cleanup_nodes.cleanup_with_progress(data, stats=cleanup_stats, remove_partial_bounds=True)
+
+log(f"Edge cleanup: removed {cleanup_stats.get('edges_total_removed', 0)} edges")
+log(f"Node cleanup: removed {cleanup_stats.get('total_removed', 0)} nodes " +
+    f"({cleanup_stats.get('removed_nodes', 0)} removed, " +
+    f"{cleanup_stats.get('outofbounds_nodes', 0)} out-of-bounds, " +
+    f"{cleanup_stats.get('orphan_nodes', 0)} orphans)")
+progress.step(f"Removed {cleanup_stats.get('total_removed', 0):,} unused nodes", percent=82)
+
+# Remove nil values
 progress.step("Removing nil values...")
 data = lua_remove_nil(data)
 progress.step("Data cleanup complete", percent=85)
@@ -262,6 +277,19 @@ if preprocess_stats:
         "original_edges": preprocess_stats.get("original_count", 0),
         "filtered_edges": preprocess_stats.get("edges_filtered", 0),
         "final_edges": preprocess_stats.get("final_count", 0),
+    }
+
+# Add cleanup stats if available
+if cleanup_stats:
+    data["cleanup_stats"] = {
+        "original_nodes": cleanup_stats.get("original_node_count", 0),
+        "removed_nodes": cleanup_stats.get("removed_nodes", 0),
+        "outofbounds_nodes": cleanup_stats.get("outofbounds_nodes", 0),
+        "orphan_nodes": cleanup_stats.get("orphan_nodes", 0),
+        "final_nodes": cleanup_stats.get("final_node_count", 0),
+        "edges_original": cleanup_stats.get("edges_original", 0),
+        "edges_removed": cleanup_stats.get("edges_total_removed", 0),
+        "edges_final": cleanup_stats.get("edges_final", 0),
     }
 
 log(f"Map metadata: OSM {data['bounds']['osm_width_km']}km x {data['bounds']['osm_height_km']}km -> TPF2 {bounds_length[0]}m x {bounds_length[1]}m")

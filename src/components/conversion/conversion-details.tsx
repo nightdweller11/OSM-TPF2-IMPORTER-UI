@@ -944,6 +944,14 @@ export function ConversionDetails({
           {/* Quick Actions */}
           <Card>
             <CardContent className="pt-6 space-y-3">
+              {isComplete && (
+                <Button variant="default" className="w-full" asChild>
+                  <Link href={`/visualize?id=${conversionId}`}>
+                    <MapPin className="h-4 w-4 mr-2" />
+                    Visualize Map
+                  </Link>
+                </Button>
+              )}
               {isFailed && (
                 <Button variant="outline" className="w-full" asChild>
                   <Link href="/convert">

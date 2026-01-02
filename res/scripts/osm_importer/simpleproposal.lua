@@ -247,9 +247,10 @@ function s.SimpleProposalCmd(data,context,ignoreErrors,cbLevel,cbFunc,retryWSmSt
 		end
 		if cbFunc then
 			if cbLevel>=1 then
-				print("Skip Proposal")
+				print("Skip Proposal (empty)")
 			end
-			cbFunc(nil, true)  -- continue with next proposal
+			-- Pass special marker to indicate empty proposal (so batch fallback can trigger)
+			cbFunc(nil, false, true)  -- (result=nil, success=false, wasEmpty=true)
 		end
 		return
 	end

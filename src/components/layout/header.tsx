@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Map, Grid3X3, Plus, User, LogIn, LogOut } from "lucide-react";
+import { Map, Grid3X3, Plus, User, LogIn, LogOut, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,6 +18,7 @@ const navItems = [
   { href: "/", label: "Home", icon: Map },
   { href: "/gallery", label: "Gallery", icon: Grid3X3 },
   { href: "/convert", label: "Convert", icon: Plus },
+  { href: "/visualize", label: "Visualize", icon: Eye },
 ];
 
 export function Header() {
